@@ -1,0 +1,23 @@
+{
+  "date": "2026-04-14",
+  "totals": {
+    "employees": 5,
+    "inOffice": 2,
+    "onLeave": 2,
+    "remote": 1,
+    "pendingRequests": 2
+  },
+  "today": {
+    "inOfficeEmployeeIds": ["emp-002", "emp-004"],
+    "onLeaveEmployeeIds": ["emp-001", "emp-005"],
+    "remoteEmployeeIds": ["emp-003"]
+  },
+  "upcomingApprovedLeaves": [
+    {
+      "requestId": "req-1003",
+      "employeeId": "emp-004",
+      "startDate": "2026-05-02",
+      "endDate": "2026-05-06"
+    }
+  ]
+}

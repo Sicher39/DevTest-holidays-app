@@ -1,0 +1,42 @@
+[
+  {
+    "id": "job-001",
+    "name": "Administrativní pracovník"
+  },
+  {
+    "id": "job-002",
+    "name": "Účetní"
+  },
+  {
+    "id": "job-003",
+    "name": "Personalista"
+  },
+  {
+    "id": "job-004",
+    "name": "Obchodní zástupce"
+  },
+  {
+    "id": "job-005",
+    "name": "Projektový manažer"
+  },
+  {
+    "id": "job-006",
+    "name": "IT technik"
+  },
+  {
+    "id": "job-007",
+    "name": "Skladník"
+  },
+  {
+    "id": "job-008",
+    "name": "Operátor výroby"
+  },
+  {
+    "id": "job-009",
+    "name": "Mistr výroby"
+  },
+  {
+    "id": "job-010",
+    "name": "Zámečník"
+  }
+]

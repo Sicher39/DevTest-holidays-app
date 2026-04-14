@@ -1,0 +1,88 @@
+[
+  {
+    "id": "req-1001",
+    "employeeId": "emp-001",
+    "type": "vacation",
+    "startDate": "2026-04-10",
+    "endDate": "2026-04-12",
+    "days": 1,
+    "status": "approved",
+    "requestedAt": "2026-03-20",
+    "approvedBy": "emp-005",
+    "note": "Prodloužený víkend"
+  },
+  {
+    "id": "req-1002",
+    "employeeId": "emp-003",
+    "type": "vacation",
+    "startDate": "2026-04-22",
+    "endDate": "2026-04-26",
+    "days": 3,
+    "status": "pending",
+    "requestedAt": "2026-04-01",
+    "approvedBy": null,
+    "note": "Rodinná dovolená"
+  },
+  {
+    "id": "req-1003",
+    "employeeId": "emp-004",
+    "type": "vacation",
+    "startDate": "2026-05-02",
+    "endDate": "2026-05-06",
+    "days": 3,
+    "status": "approved",
+    "requestedAt": "2026-04-05",
+    "approvedBy": "emp-005",
+    "note": "Jarní prázdniny"
+  },
+  {
+    "id": "req-1004",
+    "employeeId": "emp-002",
+    "type": "sick_leave",
+    "startDate": "2026-04-14",
+    "endDate": "2026-04-16",
+    "days": 3,
+    "status": "rejected",
+    "requestedAt": "2026-04-13",
+    "approvedBy": "emp-005",
+    "note": "Zadáno omylem místo sick day flow"
+  },
+  {
+    "id": "req-1005",
+    "employeeId": "emp-005",
+    "type": "vacation",
+    "startDate": "2026-07-01",
+    "endDate": "2026-07-10",
+    "days": 8,
+    "status": "pending",
+    "requestedAt": "2026-04-12",
+    "approvedBy": null,
+    "note": "Letní dovolená"
+  },
+  {
+    "id": "req-1006",
+    "employeeId": "emp-002",
+    "type": "vacation",
+    "otherTypeDetail": null,
+    "startDate": "2026-04-15",
+    "endDate": "2026-04-24",
+    "days": 10,
+    "status": "pending",
+    "requestedAt": "2026-04-14",
+    "approvedBy": null,
+    "note": "221321321321316546546"
+  },
+  {
+    "id": "req-1007",
+    "employeeId": "emp-001",
+    "type": "sick_leave",
+    "otherTypeDetail": null,
+    "startDate": "2026-04-16",
+    "endDate": "2026-05-10",
+    "days": 25,
+    "status": "pending",
+    "requestedAt": "2026-04-15",
+    "approvedBy": null,
+    "note": "2312"
+  }
+]

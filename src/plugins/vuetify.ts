@@ -8,7 +8,6 @@ import { createVuetify } from 'vuetify'
 import '@mdi/font/css/materialdesignicons.css'
 import '../styles/layers.css'
 import 'vuetify/styles'
-
 export default createVuetify({
   theme: {
     defaultTheme: 'system',
@@ -32,8 +31,8 @@ export default createVuetify({
         },
       },
     },
-
   },
+
   display: {
     mobileBreakpoint: 'md',
     thresholds: {

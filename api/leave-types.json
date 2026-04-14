@@ -1,0 +1,18 @@
+[
+  {
+    "id": "vacation",
+    "label": "Dovolená"
+  },
+  {
+    "id": "sick_leave",
+    "label": "Sick day"
+  },
+  {
+    "id": "unpaid_leave",
+    "label": "Neplacené volno"
+  },
+  {
+    "id": "other",
+    "label": "Jiné"
+  }
+]

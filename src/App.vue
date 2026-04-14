@@ -2,7 +2,6 @@
   import { computed, ref } from 'vue'
   import { useRoute } from 'vue-router'
   import { useDisplay } from 'vuetify/framework'
-  import MainRow from '@/components/MainRow.vue'
 
   const drawer = ref(false)
   const route = useRoute()
@@ -34,12 +33,7 @@
     {
       title: 'žádosti',
       icon: 'mdi-calendar-text',
-      to: '/requests',
-    },
-    {
-      title: 'nová žádost',
-      icon: 'mdi-plus-circle',
-      to: '/requests/new',
+      to: '/zadosti',
     },
   ]
 </script>
@@ -50,7 +44,7 @@
 
       <v-app-bar-title class="d-flex align-center mx-4">
         <router-link class="app-title" to="/">
-          Holidays Manager
+          HM
         </router-link>
         <span class="text-disabled">| </span>
         <span class="text-medium-emphasis"> {{ pageTitle }} </span>
@@ -73,9 +67,17 @@
 
             {{ item.title }}
           </v-btn>
-
         </router-link>
       </template>
+
+      <v-btn
+        class="px-2 mr-2"
+        color="success"
+        to="/zadosti/nova-zadost"
+        variant="flat"
+      >
+        Nová žádost
+      </v-btn>
       <!-- Mobile Icon   -->
       <v-app-bar-nav-icon v-if="!mdAndUp" @click="drawer = !drawer" />
 
@@ -101,9 +103,9 @@
 
     <!-- Main Content -->
     <v-main>
-      <MainRow>
-        <router-view />
-      </MainRow>
+
+      <router-view />
+
     </v-main>
   </v-app>
 </template>
