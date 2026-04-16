@@ -14,6 +14,11 @@ type LeaveRequestPayload = {
   note?: string
 }
 
+type ReviewLeaveRequestPayload = {
+  status: Exclude<LeaveRequestStatus, 'pending'>
+  rejectionReason?: string | null
+}
+
 type LeaveRequestRecord = {
   id: string
   employeeId: string
@@ -24,7 +29,9 @@ type LeaveRequestRecord = {
   days: number
   status: LeaveRequestStatus
   requestedAt: string
+  updatedAt?: string
   approvedBy: string | null
+  rejectionReason?: string | null
   note: string
 }
 
@@ -126,6 +133,36 @@ function validatePayload (payload: unknown): LeaveRequestPayload | { message: st
     startDate: candidate.startDate,
     endDate: candidate.endDate,
     note: candidate.note?.trim() ?? '',
+  }
+}
+
+function validateReviewPayload (payload: unknown): ReviewLeaveRequestPayload | { message: string } {
+  if (!payload || typeof payload !== 'object') {
+    return buildValidationError('Neplatné tělo požadavku.')
+  }
+
+  const candidate = payload as Partial<ReviewLeaveRequestPayload>
+  const normalizedStatus = typeof candidate.status === 'string' ? candidate.status.trim() : ''
+
+  if (normalizedStatus !== 'approved' && normalizedStatus !== 'rejected') {
+    return buildValidationError('Pole status musí být approved nebo rejected.')
+  }
+
+  if (candidate.rejectionReason !== undefined && candidate.rejectionReason !== null && typeof candidate.rejectionReason !== 'string') {
+    return buildValidationError('Pole rejectionReason musí být text, null nebo undefined.')
+  }
+
+  const normalizedRejectionReason = typeof candidate.rejectionReason === 'string'
+    ? candidate.rejectionReason.trim()
+    : null
+
+  if (normalizedStatus === 'rejected' && !normalizedRejectionReason) {
+    return buildValidationError('Pro zamítnutí je potřeba vyplnit rejectionReason.')
+  }
+
+  return {
+    status: normalizedStatus,
+    rejectionReason: normalizedStatus === 'rejected' ? normalizedRejectionReason : null,
   }
 }
 
@@ -242,6 +279,7 @@ app.post('/api/leave-requests', async (request: Request, response: Response) => 
     let createdRequest: LeaveRequestRecord | null = null
 
     await jsonFileStore.updateJsonFile<LeaveRequestRecord[]>('leave-requests.json', [], (existingRequests: LeaveRequestRecord[]) => {
+      const currentDateString = getCurrentDateString()
       const nextRequest: LeaveRequestRecord = {
         id: createLeaveRequestId(existingRequests),
         employeeId: validatedPayload.employeeId,
@@ -251,8 +289,10 @@ app.post('/api/leave-requests', async (request: Request, response: Response) => 
         endDate: validatedPayload.endDate,
         days: dayCount,
         status: 'pending',
-        requestedAt: getCurrentDateString(),
+        requestedAt: currentDateString,
+        updatedAt: currentDateString,
         approvedBy: null,
+        rejectionReason: null,
         note: validatedPayload.note ?? '',
       }
 
@@ -267,6 +307,52 @@ app.post('/api/leave-requests', async (request: Request, response: Response) => 
     }
 
     response.status(201).json(createdRequest)
+  } catch {
+    sendInternalError(response)
+  }
+})
+
+app.patch('/api/leave-requests/:id/review', async (request: Request, response: Response) => {
+  const validatedPayload = validateReviewPayload(request.body)
+
+  if ('message' in validatedPayload) {
+    response.status(400).json(validatedPayload)
+    return
+  }
+
+  try {
+    let updatedRequest: LeaveRequestRecord | null = null
+
+    await jsonFileStore.updateJsonFile<LeaveRequestRecord[]>('leave-requests.json', [], existingRequests => {
+      const requestIndex = existingRequests.findIndex(item => item.id === request.params.id)
+
+      if (requestIndex === -1) {
+        return existingRequests
+      }
+
+      const currentRequest = existingRequests[requestIndex]
+      const nextRequest: LeaveRequestRecord = {
+        ...currentRequest,
+        status: validatedPayload.status,
+        approvedBy: validatedPayload.status === 'approved' ? (currentRequest.approvedBy ?? 'system') : null,
+        rejectionReason: validatedPayload.status === 'rejected' ? (validatedPayload.rejectionReason ?? null) : null,
+        updatedAt: getCurrentDateString(),
+      }
+
+      updatedRequest = nextRequest
+
+      const nextRequests = [...existingRequests]
+      nextRequests.splice(requestIndex, 1, nextRequest)
+
+      return nextRequests
+    })
+
+    if (!updatedRequest) {
+      response.status(404).json(buildValidationError('Požadovaná žádost nebyla nalezena.'))
+      return
+    }
+
+    response.json(updatedRequest)
   } catch {
     sendInternalError(response)
   }

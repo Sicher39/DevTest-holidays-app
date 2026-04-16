@@ -31,8 +31,8 @@ export default createVuetify({
         },
       },
     },
+    utilities: true
   },
-
   display: {
     mobileBreakpoint: 'md',
     thresholds: {

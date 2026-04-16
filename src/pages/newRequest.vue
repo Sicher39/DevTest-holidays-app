@@ -237,139 +237,139 @@
   <MainRow>
     <div class="w-full px-2 sm:px-4">
       <v-card class="mt-6 w-full">
-      <v-card-title class="bg-primary px-6 py-4 text-h6 uppercase">
-        Formulář žádosti
-      </v-card-title>
+        <v-card-title class="bg-primary px-6 py-4 text-h6 uppercase">
+          Formulář žádosti
+        </v-card-title>
 
-      <v-divider />
+        <v-divider />
 
-      <v-card-text class="px-6 py-6">
-        <v-alert
-          v-if="loadError"
-          class="mb-6"
-          type="error"
-          variant="tonal"
-        >
-          {{ loadError }}
-          <template #append>
-            <v-btn
-              class="px-2"
-              color="error"
-              :loading="isOptionsLoading"
-              variant="text"
-              @click="loadFormOptions"
-            >
-              Zkusit znovu
-            </v-btn>
-          </template>
-        </v-alert>
-
-        <v-form @submit.prevent="onSubmit">
-          <v-row>
-            <v-col cols="12" md="6">
-              <v-autocomplete
-                v-model="employeeId"
-                clearable
-                :disabled="isOptionsLoading || isSubmitting"
-                :error-messages="errors.employeeId ? [errors.employeeId] : []"
-                item-title="fullName"
-                item-value="id"
-                :items="employeeOptions"
-                label="Zaměstnanec"
-                :loading="isOptionsLoading"
-                no-data-text="Žádní zaměstnanci"
-                placeholder="Vyberte zaměstnance"
-                required
-                variant="outlined"
-              />
-            </v-col>
-
-            <v-col cols="12" md="3">
-              <v-text-field
-                v-model="startDate"
-                :disabled="isSubmitting"
-                :error-messages="errors.startDate ? [errors.startDate] : []"
-                label="Od"
-                required
-                type="date"
-                variant="outlined"
-              />
-            </v-col>
-
-            <v-col cols="12" md="3">
-              <v-text-field
-                v-model="endDate"
-                :disabled="isSubmitting"
-                :error-messages="errors.endDate ? [errors.endDate] : []"
-                label="Do"
-                required
-                type="date"
-                variant="outlined"
-              />
-            </v-col>
-
-            <v-col cols="12" md="6">
-              <v-select
-                v-model="type"
-                :disabled="isOptionsLoading || isSubmitting"
-                :error-messages="errors.type ? [errors.type] : []"
-                item-title="title"
-                item-value="value"
-                :items="leaveTypeOptions"
-                label="Typ dovolené"
-                :loading="isOptionsLoading"
-                no-data-text="Žádné typy dovolené"
-                placeholder="Vyberte typ dovolené"
-                required
-                variant="outlined"
-              />
-            </v-col>
-
-            <v-col v-if="isOtherTypeSelected" cols="12" md="6">
-              <v-text-field
-                v-model="otherTypeDetail"
-                :disabled="isSubmitting"
-                :error-messages="errors.otherTypeDetail ? [errors.otherTypeDetail] : []"
-                label="Jiný typ dovolené"
-                placeholder="Doplňte jiný typ"
-
-                variant="outlined"
-              />
-            </v-col>
-
-            <v-col cols="12">
-              <v-textarea
-                v-model="note"
-                :disabled="isSubmitting"
-                label="Poznámka (volitelně)"
-                variant="outlined"
-              />
-            </v-col>
-          </v-row>
-
+        <v-card-text class="px-6 py-6">
           <v-alert
-            v-if="submitError"
-            class="mb-4"
+            v-if="loadError"
+            class="mb-6"
             type="error"
             variant="tonal"
           >
-            {{ submitError }}
+            {{ loadError }}
+            <template #append>
+              <v-btn
+                class="px-2"
+                color="error"
+                :loading="isOptionsLoading"
+                variant="text"
+                @click="loadFormOptions"
+              >
+                Zkusit znovu
+              </v-btn>
+            </template>
           </v-alert>
 
-          <div class="flex justify-end">
-            <v-btn
-              class="px-2"
-              color="primary"
-              :disabled="isOptionsLoading"
-              :loading="isSubmitting"
-              type="submit"
+          <v-form @submit.prevent="onSubmit">
+            <v-row>
+              <v-col cols="12" md="6">
+                <v-autocomplete
+                  v-model="employeeId"
+                  clearable
+                  :disabled="isOptionsLoading || isSubmitting"
+                  :error-messages="errors.employeeId ? [errors.employeeId] : []"
+                  item-title="fullName"
+                  item-value="id"
+                  :items="employeeOptions"
+                  label="Zaměstnanec"
+                  :loading="isOptionsLoading"
+                  no-data-text="Žádní zaměstnanci"
+                  placeholder="Vyberte zaměstnance"
+                  required
+                  variant="outlined"
+                />
+              </v-col>
+
+              <v-col cols="12" md="3">
+                <v-text-field
+                  v-model="startDate"
+                  :disabled="isSubmitting"
+                  :error-messages="errors.startDate ? [errors.startDate] : []"
+                  label="Od"
+                  required
+                  type="date"
+                  variant="outlined"
+                />
+              </v-col>
+
+              <v-col cols="12" md="3">
+                <v-text-field
+                  v-model="endDate"
+                  :disabled="isSubmitting"
+                  :error-messages="errors.endDate ? [errors.endDate] : []"
+                  label="Do"
+                  required
+                  type="date"
+                  variant="outlined"
+                />
+              </v-col>
+
+              <v-col cols="12" md="6">
+                <v-select
+                  v-model="type"
+                  :disabled="isOptionsLoading || isSubmitting"
+                  :error-messages="errors.type ? [errors.type] : []"
+                  item-title="title"
+                  item-value="value"
+                  :items="leaveTypeOptions"
+                  label="Typ dovolené"
+                  :loading="isOptionsLoading"
+                  no-data-text="Žádné typy dovolené"
+                  placeholder="Vyberte typ dovolené"
+                  required
+                  variant="outlined"
+                />
+              </v-col>
+
+              <v-col v-if="isOtherTypeSelected" cols="12" md="6">
+                <v-text-field
+                  v-model="otherTypeDetail"
+                  :disabled="isSubmitting"
+                  :error-messages="errors.otherTypeDetail ? [errors.otherTypeDetail] : []"
+                  label="Jiný typ dovolené"
+                  placeholder="Doplňte jiný typ"
+
+                  variant="outlined"
+                />
+              </v-col>
+
+              <v-col cols="12">
+                <v-textarea
+                  v-model="note"
+                  :disabled="isSubmitting"
+                  label="Poznámka (volitelně)"
+                  variant="outlined"
+                />
+              </v-col>
+            </v-row>
+
+            <v-alert
+              v-if="submitError"
+              class="mb-4"
+              type="error"
+              variant="tonal"
             >
-              Odeslat žádost
-            </v-btn>
-          </div>
-        </v-form>
-      </v-card-text>
-    </v-card>
+              {{ submitError }}
+            </v-alert>
+
+            <div class="flex justify-end">
+              <v-btn
+                class="px-2"
+                color="primary"
+                :disabled="isOptionsLoading"
+                :loading="isSubmitting"
+                type="submit"
+              >
+                Odeslat žádost
+              </v-btn>
+            </div>
+          </v-form>
+        </v-card-text>
+      </v-card>
 
       <v-snackbar
         v-model="successSnackbarVisible"

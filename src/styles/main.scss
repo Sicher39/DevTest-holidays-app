@@ -3,6 +3,28 @@
     font-family: var(--font-mono);
   }
 
+  input,
+  select {
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+  }
+
+  .v-text-field .v-field__input,
+  .v-select .v-field__input,
+  .v-autocomplete .v-field__input,
+  .v-textarea .v-field__input {
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+    padding-inline-start: 0.5rem;
+  }
+
+  .v-select .v-select__selection,
+  .v-autocomplete .v-autocomplete__selection,
+  .v-field .v-field__input > input {
+    margin-inline-start: 0;
+    padding-inline-start: 0.5rem;
+  }
+
   .v-select.v-select--selected .v-field__input > input {
     opacity: 0 !important;
   }

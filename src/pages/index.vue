@@ -4,7 +4,7 @@
   import PageHeader from '@/components/PageHeader.vue'
 
   type DashboardCard = {
-    title: 'V kanceláři' | 'Na dovolené' | 'Remote'
+    title: 'Čekající žádosti' | 'Schválené tento měsíc' | 'Zamítnuté tento měsíc'
     value: number
   }
 
@@ -18,6 +18,7 @@
     startDate: string
     endDate: string
     status: LeaveRequestStatus
+    requestedAt?: string
     rejectionReason?: string | null
   }
 
@@ -68,12 +69,12 @@
     { title: 'Příjmení a jméno', key: 'employeeName', sortable: true },
     { title: 'Pracoviště', key: 'workplace', sortable: true },
     { title: 'Dovolená od', key: 'startDateSort', sortable: true },
-    { title: 'Dovolená do', key: 'endDateSort', sortable: true },
+    { title: 'Dovolená do', key: 'endDateSort', sortable: false },
     {
       title: 'Stav žádosti',
       key: 'statusRaw',
       sortable: true,
-      width: '1%',
+      width: '12%',
       cellProps: { class: 'dashboard-col-status' },
       headerProps: { class: 'dashboard-col-status' },
     },
@@ -88,15 +89,32 @@
     },
   ]
 
+  function isInCurrentMonth (value: string): boolean {
+    const parsedDate = new Date(value)
+
+    if (Number.isNaN(parsedDate.getTime())) {
+      return false
+    }
+
+    const now = new Date()
+
+    return parsedDate.getFullYear() === now.getFullYear()
+      && parsedDate.getMonth() === now.getMonth()
+  }
+
   const summaryCards = computed<DashboardCard[]>(() => {
-    const inOfficeCount = employees.value.filter(employee => employee.statusToday === 'in_office').length
-    const onLeaveCount = employees.value.filter(employee => employee.statusToday === 'on_leave').length
-    const remoteCount = employees.value.filter(employee => employee.statusToday === 'remote').length
+    const pendingCount = leaveRequests.value.filter(request => request.status === 'pending').length
+    const approvedThisMonthCount = leaveRequests.value.filter(request => {
+      return request.status === 'approved' && isInCurrentMonth(request.requestedAt ?? '')
+    }).length
+    const rejectedThisMonthCount = leaveRequests.value.filter(request => {
+      return request.status === 'rejected' && isInCurrentMonth(request.requestedAt ?? '')
+    }).length
 
     return [
-      { title: 'V kanceláři', value: inOfficeCount },
-      { title: 'Na dovolené', value: onLeaveCount },
-      { title: 'Remote', value: remoteCount },
+      { title: 'Čekající žádosti', value: pendingCount },
+      { title: 'Schválené tento měsíc', value: approvedThisMonthCount },
+      { title: 'Zamítnuté tento měsíc', value: rejectedThisMonthCount },
     ]
   })
 
@@ -343,107 +361,112 @@
 
   <MainRow>
     <div class="mt-12 block w-full px-2 sm:px-4">
-      <v-card flat>
-        <v-card-title class="dashboard-card-title flex flex-wrap items-center justify-between gap-4 bg-primary">
-          <span class="text-h6 uppercase">Čekající žádosti</span>
+      <v-card>
+        <div class="flex w-full justify-between items-center  bg-primary px-4">
 
-          <v-text-field
-            v-model="searchPendingRequests"
-            class="dashboard-search-field"
-            density="compact"
-            hide-details
-            label="Vyhledat"
-            prepend-inner-icon="mdi-magnify"
-            single-line
-            variant="outlined"
-          />
-        </v-card-title>
+          <h3 class="text-2xl uppercase">Čekající žádosti</h3>
 
-        <v-divider />
+          <div class="flex w-3/12 my-2">
 
-        <div class="dashboard-table-scroll overflow-x-auto">
-          <v-data-table
-            class="dashboard-data-table min-w-[920px]"
-            :headers="pendingRequestTableHeaders"
-            :hide-default-footer="true"
-            item-value="id"
-            :items="paginatedPendingRequestRows"
-          >
-            <template #item.startDateSort="{ item }">
-              {{ item.startDate }}
-            </template>
-
-            <template #item.endDateSort="{ item }">
-              {{ item.endDate }}
-            </template>
-
-            <template #item.statusRaw="{ item }">
-              <v-chip
-                class="px-2"
-                :color="getStatusChipColor(item.statusRaw)"
-                size="small"
-              >
-                {{ item.statusLabel }}
-              </v-chip>
-            </template>
-
-            <template #item.review="{ item }">
-              <v-btn
-                color="primary"
-                size="small"
-                variant="outlined"
-                @click="openReviewDialog(item.id)"
-              >
-                Posoudit
-              </v-btn>
-            </template>
-
-            <template #no-data>
-              <div class="px-4 py-6 text-center">
-                Nebyly nalezeny žádné čekající žádosti.
-              </div>
-            </template>
-          </v-data-table>
-        </div>
-
-        <v-divider />
-
-        <div class="dashboard-table-footer flex flex-col gap-4 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
-          <div class="flex items-center gap-3">
-            <span class="text-body-2 text-medium-emphasis">Položek na stránku</span>
-            <v-select
-              class="dashboard-items-per-page-select"
-              density="compact"
+            <v-text-field
+              v-model="searchPendingRequests"
               hide-details
-              :items="itemsPerPageOptions"
-              :model-value="itemsPerPage"
-              variant="outlined"
-              @update:model-value="handleItemsPerPageChange"
+              prepend-inner-icon="mdi-magnify"
             />
+
           </div>
 
-          <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
-            <span class="text-body-2 text-medium-emphasis">{{ paginationLabel }}</span>
-            <v-pagination
-              v-model="currentPage"
-              active-color="primary"
-              density="compact"
-              :length="pageCount"
-              rounded="circle"
-              total-visible="5"
-            />
-          </div>
         </div>
       </v-card>
+      <v-divider />
+
+      <div class="overflow-x-auto">
+        <v-data-table
+          class="px-2 min-w-230"
+          :custom-key-sort="{
+            startDateSort: (left: number, right: number) => left - right,
+            endDateSort: (left: number, right: number) => left - right,
+          }"
+          :headers="pendingRequestTableHeaders"
+          :hide-default-footer="true"
+          item-value="id"
+          :items="paginatedPendingRequestRows"
+        >
+          <template #item.startDateSort="{ item }">
+            {{ item.startDate }}
+          </template>
+
+          <template #item.endDateSort="{ item }">
+            {{ item.endDate }}
+          </template>
+
+          <template #item.statusRaw="{ item }">
+            <v-chip
+              class="px-2"
+              :color="getStatusChipColor(item.statusRaw)"
+              size="small"
+            >
+              {{ item.statusLabel }}
+            </v-chip>
+          </template>
+
+          <template #item.review="{ item }">
+            <v-btn
+              class="px-2"
+              color="success"
+              rounded="xl"
+              size="small"
+              variant="flat"
+              @click="openReviewDialog(item.id)"
+            >
+              Posoudit
+            </v-btn>
+          </template>
+
+          <template #no-data>
+            <div class="px-4 py-6 text-center">
+              Nebyly nalezeny žádné čekající žádosti.
+            </div>
+          </template>
+        </v-data-table>
+      </div>
+
+      <v-divider />
+
+      <div class=" flex flex-col gap-4 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+        <div class="flex items-center gap-3">
+          <span class="px-4 text-medium-emphasis">Položek na stránku</span>
+          <v-select
+            density="comfortable"
+            hide-details
+            :items="itemsPerPageOptions"
+            :model-value="itemsPerPage"
+            @update:model-value="handleItemsPerPageChange"
+          />
+        </div>
+
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+          <span class="text-body-2 text-medium-emphasis">{{ paginationLabel }}</span>
+          <v-pagination
+            v-model="currentPage"
+            density="comfortable"
+            :length="pageCount"
+            rounded="xl"
+            total-visible="5"
+          />
+        </div>
+      </div>
+
     </div>
   </MainRow>
 
+  <!-- lightbox -->
   <v-dialog
     v-model="reviewDialogVisible"
     max-width="640"
   >
     <v-card>
-      <v-card-title class="bg-primary px-6 py-4 text-center text-h6 uppercase">
+      <v-card-title class="bg-primary text-white px-6 py-4 text-center text-h6 uppercase">
         Posouzení
       </v-card-title>
 
@@ -475,7 +498,7 @@
             <div class="mb-4 flex flex-wrap gap-2">
               <v-chip
                 class="review-chip review-chip--approve border px-4 uppercase"
-                :color="reviewAction === 'approved' ? 'success' : undefined"
+                :class="reviewAction === 'approved' ? 'success' : 'outlined'"
                 size="small"
                 :variant="reviewAction === 'approved' ? 'flat' : 'outlined'"
                 @click="reviewAction = 'approved'"
@@ -495,30 +518,35 @@
           </div>
 
           <v-textarea
+
             v-if="isRejectAction"
             v-model="rejectionReason"
             auto-grow
+            class="py-2"
             label="Důvod zamítnutí"
             placeholder="Doplňte důvod zamítnutí"
             rows="3"
             :rules="[(value: string) => !!value?.trim() || 'Důvod zamítnutí je povinný.']"
-            variant="outlined"
           />
+
         </div>
       </v-card-text>
 
       <v-divider />
 
-      <v-card-actions class="justify-end px-6 py-4">
+      <v-card-actions class="justify-end px-2 py-4">
         <v-btn
+            class="rounded-xl"
           variant="text"
           @click="closeReviewDialog"
         >
           Zrušit
         </v-btn>
         <v-btn
-          color="primary"
+          class="px-2 rounded-xl"
+          color="success"
           :disabled="!reviewFormValid"
+          variant="flat"
           @click="submitReview"
         >
           Uložit posouzení
@@ -527,64 +555,3 @@
     </v-card>
   </v-dialog>
 </template>
-
-<style scoped>
-  .dashboard-table-scroll {
-    -webkit-overflow-scrolling: touch;
-  }
-
-  .dashboard-card-title {
-    padding: 16px;
-  }
-
-  .dashboard-search-field {
-    width: min(100%, 320px);
-  }
-
-  .dashboard-items-per-page-select {
-    flex: 0 0 112px;
-    width: 112px;
-  }
-
-  :deep(.dashboard-items-per-page-select .v-field__input) {
-    padding-inline-end: 32px;
-  }
-
-  :deep(.dashboard-items-per-page-select .v-select__selection) {
-    margin-inline-end: 0;
-  }
-
-  :deep(.dashboard-data-table .v-data-table__th),
-  :deep(.dashboard-data-table .v-data-table__td) {
-    padding-left: 8px;
-    padding-right: 8px;
-  }
-
-  :deep(.dashboard-data-table .dashboard-col-status),
-  :deep(.dashboard-data-table .dashboard-col-review) {
-    white-space: nowrap;
-    width: 1%;
-  }
-
-  .review-chip {
-    cursor: pointer;
-    font-size: 0.78rem;
-    font-weight: 600;
-    letter-spacing: 0.01em;
-  }
-
-  :deep(.review-chip.v-chip--variant-flat),
-  :deep(.review-chip.v-chip--variant-flat .v-chip__content) {
-    color: white;
-  }
-
-  .review-chip--approve {
-    color: rgb(var(--v-theme-success));
-    border-color: rgb(var(--v-theme-success));
-  }
-
-  .review-chip--reject {
-    color: rgb(var(--v-theme-error));
-    border-color: rgb(var(--v-theme-error));
-  }
-</style>

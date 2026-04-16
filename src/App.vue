@@ -26,12 +26,12 @@
 
   const menuItems = [
     {
-      title: 'nástěnka',
-      icon: 'mdi-calendar-text',
+      title: 'Nástěnka',
+      icon: 'mdi-bulletin-board',
       to: '/',
     },
     {
-      title: 'žádosti',
+      title: 'Žádosti',
       icon: 'mdi-calendar-text',
       to: '/zadosti',
     },
@@ -42,45 +42,48 @@
   <v-app>
     <v-app-bar color="primary" density="compact" elevation="1">
 
-      <v-app-bar-title class="d-flex align-center mx-4">
-        <router-link class="app-title" to="/">
-          HM
-        </router-link>
-        <span class="text-disabled">| </span>
-        <span class="text-medium-emphasis"> {{ pageTitle }} </span>
+      <div class="flex justify-between items-center w-full px-4  ">
+        <div class="flex">
+          <router-link to="/">
+            HM
+          </router-link>
+          <div class="flex">
+            <p>| {{ pageTitle }} </p>
+          </div>
+        </div>
+        <div class="flex">
+          <template v-if="mdAndUp">
+            <router-link
+              v-for="item in menuItems"
+              :key="item.to"
+              v-slot="{ isActive }"
+              class="px-4"
+              :to="item.to"
+            >
+              <v-btn
+                class="mx-2 px-2"
+                :color="isActive ? undefined : 'active'"
+                :prepend-icon="item.icon"
+                variant="plain"
+              >
+                {{ item.title }}
+              </v-btn>
+            </router-link>
+          </template>
 
-      </v-app-bar-title>
-      <v-spacer />
-      <template v-if="mdAndUp">
-        <router-link
-          v-for="item in menuItems"
-          :key="item.to"
-          v-slot="{ isActive }"
-          class="px-4"
-          :to="item.to"
-        >
           <v-btn
-            class="mx-2 px-2"
-            :color="isActive ? undefined : 'active'"
-            variant="plain"
+            class="px-2"
+            color="success"
+            rounded="lg"
+            to="/zadosti/nova-zadost"
+            variant="flat"
           >
-
-            {{ item.title }}
+            <span class="text-white">Nová žádost</span>
           </v-btn>
-        </router-link>
-      </template>
-
-      <v-btn
-        class="px-2 mr-2"
-        color="success"
-        to="/zadosti/nova-zadost"
-        variant="flat"
-      >
-        Nová žádost
-      </v-btn>
-      <!-- Mobile Icon   -->
-      <v-app-bar-nav-icon v-if="!mdAndUp" @click="drawer = !drawer" />
-
+          <!-- Mobile Icon   -->
+          <v-app-bar-nav-icon v-if="!mdAndUp" @click="drawer = !drawer" />
+        </div>
+      </div>
     </v-app-bar>
 
     <!--    Mobile menu -->
@@ -103,9 +106,7 @@
 
     <!-- Main Content -->
     <v-main>
-
       <router-view />
-
     </v-main>
   </v-app>
 </template>
