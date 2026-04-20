@@ -2,37 +2,20 @@
   import { computed, onMounted, ref, watch } from 'vue'
   import MainRow from '@/components/MainRow.vue'
   import PageHeader from '@/components/PageHeader.vue'
+  import { useLeaveRequestReview } from '@/composables/useLeaveRequestReview'
+  import { getLeaveRequests } from '@/services/mock/leaveRequestsService'
+  import { getEmployees, getJobPositions } from '@/services/mock/referenceDataService'
+  import type { Employee, JobPosition, LeaveRequest, LeaveRequestStatus } from '@/types/leave'
+  import {
+    formatDateToCzech,
+    getDateSortValue,
+    getStatusChipColor,
+    leaveRequestStatusLabelsNoun,
+  } from '@/utils/leaveFormat'
 
   type DashboardCard = {
     title: 'Čekající žádosti' | 'Schválené tento měsíc' | 'Zamítnuté tento měsíc'
     value: number
-  }
-
-  type LeaveRequestStatus = 'approved' | 'pending' | 'rejected'
-  type EmployeeStatusToday = 'in_office' | 'on_leave' | 'remote'
-  type ReviewAction = 'approved' | 'rejected'
-
-  type LeaveRequest = {
-    id: string
-    employeeId: string
-    startDate: string
-    endDate: string
-    status: LeaveRequestStatus
-    requestedAt?: string
-    rejectionReason?: string | null
-  }
-
-  type Employee = {
-    id: string
-    firstName: string
-    lastName: string
-    jobPositionId: string
-    statusToday?: EmployeeStatusToday
-  }
-
-  type JobPosition = {
-    id: string
-    name: string
   }
 
   type PendingRequestRow = {
@@ -52,12 +35,10 @@
   const jobPositions = ref<JobPosition[]>([])
   const leaveRequests = ref<LeaveRequest[]>([])
 
-  const searchPendingRequests = ref('')
-  const reviewDialogVisible = ref(false)
-  const reviewAction = ref<ReviewAction | null>(null)
-  const rejectionReason = ref('')
-  const selectedRequestId = ref<string | null>(null)
+  const isLoading = ref(false)
+  const loadError = ref<string | null>(null)
 
+  const searchPendingRequests = ref('')
   const itemsPerPageOptions = [5, 10, 20]
   const itemsPerPage = ref(10)
   const currentPage = ref(1)
@@ -97,9 +78,33 @@
     }
 
     const now = new Date()
+    return parsedDate.getFullYear() === now.getFullYear() && parsedDate.getMonth() === now.getMonth()
+  }
 
-    return parsedDate.getFullYear() === now.getFullYear()
-      && parsedDate.getMonth() === now.getMonth()
+  async function loadDashboardData (): Promise<void> {
+    isLoading.value = true
+    loadError.value = null
+
+    try {
+      const [employeesResponse, leaveRequestsResponse, jobPositionsResponse] = await Promise.all([
+        getEmployees(),
+        getLeaveRequests(),
+        getJobPositions(),
+      ])
+
+      employees.value = employeesResponse
+      leaveRequests.value = leaveRequestsResponse
+      jobPositions.value = jobPositionsResponse
+    } catch (error) {
+      employees.value = []
+      leaveRequests.value = []
+      jobPositions.value = []
+      loadError.value = error instanceof Error
+        ? error.message
+        : 'Nástěnku se nepodařilo načíst.'
+    } finally {
+      isLoading.value = false
+    }
   }
 
   const summaryCards = computed<DashboardCard[]>(() => {
@@ -118,82 +123,15 @@
     ]
   })
 
-  const employeeById = computed(() => {
-    return new Map(employees.value.map(employee => [employee.id, employee]))
-  })
-
-  const workplaceById = computed(() => {
-    return new Map(jobPositions.value.map(position => [position.id, position.name]))
-  })
-
-  const statusLabelByValue: Record<LeaveRequestStatus, string> = {
-    approved: 'Schváleno',
-    pending: 'Čekající',
-    rejected: 'Zamítnuto',
-  }
-
-  const statusColorByValue: Record<LeaveRequestStatus, 'success' | 'warning' | 'error'> = {
-    approved: 'success',
-    pending: 'warning',
-    rejected: 'error',
-  }
-
-  const czechDateFormatter = new Intl.DateTimeFormat('cs-CZ')
-
-  function formatDateToCzech (value: string): string {
-    const date = new Date(value)
-
-    if (Number.isNaN(date.getTime())) {
-      return value
-    }
-
-    return czechDateFormatter.format(date)
-  }
-
-  function getDateSortValue (value: string): number {
-    const parsedDate = new Date(value).getTime()
-    return Number.isNaN(parsedDate) ? Number.POSITIVE_INFINITY : parsedDate
-  }
-
-  async function fetchApiJson<T> (url: string): Promise<T | null> {
-    try {
-      const response = await fetch(url)
-
-      if (!response.ok) {
-        return null
-      }
-
-      return await response.json() as T
-    } catch {
-      return null
-    }
-  }
-
-  async function loadDashboardData (): Promise<void> {
-    const [employeesResponse, leaveRequestsResponse, jobPositionsResponse] = await Promise.all([
-      fetchApiJson<Employee[]>('/api/employees'),
-      fetchApiJson<LeaveRequest[]>('/api/leave-requests'),
-      fetchApiJson<JobPosition[]>('/api/job-positions'),
-    ])
-
-    employees.value = employeesResponse ?? []
-    leaveRequests.value = leaveRequestsResponse ?? []
-    jobPositions.value = jobPositionsResponse ?? []
-  }
-
-  function getStatusChipColor (status: LeaveRequestStatus): 'success' | 'warning' | 'error' {
-    return statusColorByValue[status]
-  }
+  const employeeById = computed(() => new Map(employees.value.map(employee => [employee.id, employee])))
+  const workplaceById = computed(() => new Map(jobPositions.value.map(position => [position.id, position.name])))
 
   const pendingRequestRows = computed<PendingRequestRow[]>(() => {
     return leaveRequests.value
       .filter(request => request.status === 'pending')
       .map(request => {
         const employee = employeeById.value.get(request.employeeId)
-        const employeeName = employee
-          ? `${employee.lastName} ${employee.firstName}`
-          : safeUnknownEmployee
-
+        const employeeName = employee ? `${employee.lastName} ${employee.firstName}` : safeUnknownEmployee
         const workplace = employee
           ? (workplaceById.value.get(employee.jobPositionId) ?? safeUnknownWorkplace)
           : safeUnknownWorkplace
@@ -206,7 +144,7 @@
           endDate: formatDateToCzech(request.endDate),
           startDateSort: getDateSortValue(request.startDate),
           endDateSort: getDateSortValue(request.endDate),
-          statusLabel: statusLabelByValue[request.status],
+          statusLabel: leaveRequestStatusLabelsNoun[request.status],
           statusRaw: request.status,
           rejectionReason: request.rejectionReason ?? null,
         }
@@ -228,9 +166,20 @@
     })
   })
 
+  const noDataMessage = computed(() => {
+    if (isLoading.value) {
+      return 'Načítání čekajících žádostí…'
+    }
+
+    if (pendingRequestRows.value.length === 0) {
+      return 'Aktuálně nejsou žádné čekající žádosti.'
+    }
+
+    return 'Pro zadané hledání nebyly nalezeny žádné čekající žádosti.'
+  })
+
   const pageCount = computed(() => {
-    const totalItems = filteredPendingRequestRows.value.length
-    return Math.max(1, Math.ceil(totalItems / itemsPerPage.value))
+    return Math.max(1, Math.ceil(filteredPendingRequestRows.value.length / itemsPerPage.value))
   })
 
   const paginatedPendingRequestRows = computed<PendingRequestRow[]>(() => {
@@ -251,6 +200,22 @@
     return `${start}–${end} z ${totalItems}`
   })
 
+  const {
+    dialogVisible: reviewDialogVisible,
+    reviewAction,
+    rejectionReason,
+    selectedRequestId,
+    isSavingReview,
+    reviewError,
+    isRejectAction,
+    reviewFormValid,
+    openDialog: openReviewDialog,
+    closeDialog: closeReviewDialog,
+    submitReview,
+  } = useLeaveRequestReview({
+    leaveRequests,
+  })
+
   const selectedRequest = computed<PendingRequestRow | null>(() => {
     if (!selectedRequestId.value) {
       return null
@@ -258,57 +223,6 @@
 
     return pendingRequestRows.value.find(request => request.id === selectedRequestId.value) ?? null
   })
-
-  const isRejectAction = computed(() => reviewAction.value === 'rejected')
-
-  const reviewFormValid = computed(() => {
-    if (!reviewAction.value) {
-      return false
-    }
-
-    if (reviewAction.value === 'rejected') {
-      return rejectionReason.value.trim().length > 0
-    }
-
-    return true
-  })
-
-  function openReviewDialog (requestId: string): void {
-    selectedRequestId.value = requestId
-    reviewAction.value = null
-    rejectionReason.value = ''
-    reviewDialogVisible.value = true
-  }
-
-  function closeReviewDialog (): void {
-    reviewDialogVisible.value = false
-    selectedRequestId.value = null
-    reviewAction.value = null
-    rejectionReason.value = ''
-  }
-
-  function submitReview (): void {
-    const currentRequestId = selectedRequestId.value
-    const currentReviewAction = reviewAction.value
-
-    if (!currentRequestId || !currentReviewAction) {
-      return
-    }
-
-    leaveRequests.value = leaveRequests.value.map(request => {
-      if (request.id !== currentRequestId) {
-        return request
-      }
-
-      return {
-        ...request,
-        status: currentReviewAction,
-        rejectionReason: currentReviewAction === 'rejected' ? rejectionReason.value.trim() : null,
-      }
-    })
-
-    closeReviewDialog()
-  }
 
   function handleItemsPerPageChange (value: number | string | null): void {
     const nextValue = typeof value === 'number' ? value : Number(value)
@@ -362,23 +276,38 @@
   <MainRow>
     <div class="mt-12 block w-full px-2 sm:px-4">
       <v-card>
-        <div class="flex w-full justify-between items-center  bg-primary px-4">
-
+        <div class="flex w-full items-center justify-between bg-primary px-4">
           <h3 class="text-2xl uppercase">Čekající žádosti</h3>
 
-          <div class="flex w-3/12 my-2">
-
+          <div class="my-2 flex w-3/12">
             <v-text-field
               v-model="searchPendingRequests"
               hide-details
               prepend-inner-icon="mdi-magnify"
             />
-
           </div>
-
         </div>
       </v-card>
+
       <v-divider />
+
+      <v-alert
+        v-if="loadError"
+        class="my-4"
+        type="error"
+        variant="tonal"
+      >
+        {{ loadError }}
+        <template #append>
+          <v-btn
+            size="small"
+            variant="text"
+            @click="loadDashboardData"
+          >
+            Zkusit znovu
+          </v-btn>
+        </template>
+      </v-alert>
 
       <div class="overflow-x-auto">
         <v-data-table
@@ -391,6 +320,8 @@
           :hide-default-footer="true"
           item-value="id"
           :items="paginatedPendingRequestRows"
+          :loading="isLoading"
+          loading-text="Načítání čekajících žádostí…"
         >
           <template #item.startDateSort="{ item }">
             {{ item.startDate }}
@@ -413,6 +344,7 @@
           <template #item.review="{ item }">
             <v-btn
               class="px-2"
+              prepend-icon="mdi-magnify"
               color="success"
               rounded="xl"
               size="small"
@@ -425,7 +357,7 @@
 
           <template #no-data>
             <div class="px-4 py-6 text-center">
-              Nebyly nalezeny žádné čekající žádosti.
+              {{ noDataMessage }}
             </div>
           </template>
         </v-data-table>
@@ -433,7 +365,7 @@
 
       <v-divider />
 
-      <div class=" flex flex-col gap-4 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+      <div class="flex flex-col gap-4 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
         <div class="flex items-center gap-3">
           <span class="px-4 text-medium-emphasis">Položek na stránku</span>
           <v-select
@@ -456,11 +388,9 @@
           />
         </div>
       </div>
-
     </div>
   </MainRow>
 
-  <!-- lightbox -->
   <v-dialog
     v-model="reviewDialogVisible"
     max-width="640"
@@ -492,13 +422,22 @@
           </div>
         </div>
 
+        <v-alert
+          v-if="reviewError"
+          class="mb-4"
+          type="error"
+          variant="tonal"
+        >
+          {{ reviewError }}
+        </v-alert>
+
         <div class="grid gap-4">
           <div>
             <div class="mb-2 text-body-2 uppercase">Rozhodnutí</div>
             <div class="mb-4 flex flex-wrap gap-2">
               <v-chip
                 class="review-chip review-chip--approve border px-4 uppercase"
-                :class="reviewAction === 'approved' ? 'success' : 'outlined'"
+                :color="reviewAction === 'approved' ? 'success' : undefined"
                 size="small"
                 :variant="reviewAction === 'approved' ? 'flat' : 'outlined'"
                 @click="reviewAction = 'approved'"
@@ -518,17 +457,14 @@
           </div>
 
           <v-textarea
-
             v-if="isRejectAction"
             v-model="rejectionReason"
             auto-grow
             class="py-2"
             label="Důvod zamítnutí"
-            placeholder="Doplňte důvod zamítnutí"
             rows="3"
             :rules="[(value: string) => !!value?.trim() || 'Důvod zamítnutí je povinný.']"
           />
-
         </div>
       </v-card-text>
 
@@ -536,7 +472,7 @@
 
       <v-card-actions class="justify-end px-2 py-4">
         <v-btn
-            class="rounded-xl"
+          class="rounded-xl"
           variant="text"
           @click="closeReviewDialog"
         >
@@ -545,7 +481,9 @@
         <v-btn
           class="px-2 rounded-xl"
           color="success"
-          :disabled="!reviewFormValid"
+          append-icon="mdi-check"
+          :disabled="!reviewFormValid || isSavingReview"
+          :loading="isSavingReview"
           variant="flat"
           @click="submitReview"
         >

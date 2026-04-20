@@ -43,13 +43,12 @@
     <v-app-bar color="primary" density="compact" elevation="1">
 
       <div class="flex justify-between items-center w-full px-4  ">
-        <div class="flex">
+        <div class="flex space-x-2">
           <router-link to="/">
             HM
           </router-link>
-          <div class="flex">
-            <p>| {{ pageTitle }} </p>
-          </div>
+          <p>|</p>
+          <p>{{ pageTitle }}</p>
         </div>
         <div class="flex">
           <template v-if="mdAndUp">
@@ -64,6 +63,7 @@
                 class="mx-2 px-2"
                 :color="isActive ? undefined : 'active'"
                 :prepend-icon="item.icon"
+                rounded="lg"
                 variant="plain"
               >
                 {{ item.title }}
@@ -74,6 +74,7 @@
           <v-btn
             class="px-2"
             color="success"
+            prepend-icon="mdi-invoice-text-plus"
             rounded="lg"
             to="/zadosti/nova-zadost"
             variant="flat"

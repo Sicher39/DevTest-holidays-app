@@ -1,43 +1,18 @@
 <script setup lang="ts">
-  import { computed, onMounted, ref, watch } from 'vue'
+  import type { Employee, JobPosition, LeaveRequest, LeaveRequestStatus, LeaveType } from '@/types/leave'
+  import { computed, onMounted, ref } from 'vue'
   import MainRow from '@/components/MainRow.vue'
   import PageHeader from '@/components/PageHeader.vue'
-
-  type LeaveRequestStatus = 'approved' | 'pending' | 'rejected'
-  type ReviewAction = 'approved' | 'rejected'
-  type StatusFilterValue = 'all' | LeaveRequestStatus
-  type TypeFilterValue = 'all' | string
-
-  type LeaveRequest = {
-    id: string
-    employeeId: string
-    type: string
-    startDate: string
-    endDate: string
-    status: LeaveRequestStatus
-    requestedAt?: string
-    updatedAt?: string
-    rejectionReason?: string | null
-    note?: string
-    otherTypeDetail?: string | null
-  }
-
-  type Employee = {
-    id: string
-    firstName: string
-    lastName: string
-    jobPositionId: string
-  }
-
-  type JobPosition = {
-    id: string
-    name: string
-  }
-
-  type LeaveType = {
-    id: string
-    label: string
-  }
+  import { useLeaveRequestReview } from '@/composables/useLeaveRequestReview'
+  import { type StatusFilterValue, type TypeFilterValue, useLeaveRequestsTable } from '@/composables/useLeaveRequestsTable'
+  import { getLeaveRequests } from '@/services/mock/leaveRequestsService'
+  import { getEmployees, getJobPositions, getLeaveTypes } from '@/services/mock/referenceDataService'
+  import {
+    formatDateToCzech,
+    getDateSortValue,
+    getStatusChipColor,
+    leaveRequestStatusLabelsAdjective,
+  } from '@/utils/leaveFormat'
 
   type LeaveRequestRow = {
     id: string
@@ -60,33 +35,13 @@
     otherTypeDetail?: string | null
   }
 
-  type ApiErrorResponse = {
-    message?: string
-  }
-
-  type ActiveFilterChip = {
-    key: 'search' | 'status' | 'type'
-    label: string
-  }
-
   const employees = ref<Employee[]>([])
   const jobPositions = ref<JobPosition[]>([])
   const leaveRequests = ref<LeaveRequest[]>([])
   const leaveTypes = ref<LeaveType[]>([])
 
-  const searchRequests = ref('')
-  const statusFilter = ref<StatusFilterValue>('all')
-  const typeFilter = ref<TypeFilterValue>('all')
-  const itemsPerPageOptions = [5, 10, 20]
-  const itemsPerPage = ref(10)
-  const currentPage = ref(1)
-
-  const detailDialogVisible = ref(false)
-  const reviewAction = ref<ReviewAction | null>(null)
-  const rejectionReason = ref('')
-  const selectedRequestId = ref<string | null>(null)
-  const isSavingReview = ref(false)
-  const reviewError = ref<string | null>(null)
+  const isLoading = ref(false)
+  const loadError = ref<string | null>(null)
 
   const safeUnknownEmployee = 'Neznámý zaměstnanec'
   const safeUnknownWorkplace = 'Neznámé pracoviště'
@@ -119,18 +74,6 @@
     },
   ]
 
-  const statusLabelByValue: Record<LeaveRequestStatus, string> = {
-    approved: 'Schválená',
-    pending: 'Čekající',
-    rejected: 'Zamítnutá',
-  }
-
-  const statusColorByValue: Record<LeaveRequestStatus, 'success' | 'warning' | 'error'> = {
-    approved: 'success',
-    pending: 'warning',
-    rejected: 'error',
-  }
-
   const statusFilterItems: Array<{ title: string, value: StatusFilterValue }> = [
     { title: 'Všechny stavy', value: 'all' },
     { title: 'Čekající', value: 'pending' },
@@ -138,88 +81,53 @@
     { title: 'Zamítnutá', value: 'rejected' },
   ]
 
-  const czechDateFormatter = new Intl.DateTimeFormat('cs-CZ')
-
-  function formatDateToCzech (value: string): string {
-    const date = new Date(value)
-
-    if (Number.isNaN(date.getTime())) {
-      return value
-    }
-
-    return czechDateFormatter.format(date)
-  }
-
-  function getDateSortValue (value: string): number {
-    const parsedDate = new Date(value).getTime()
-    return Number.isNaN(parsedDate) ? Number.POSITIVE_INFINITY : parsedDate
-  }
-
-  function getStatusChipColor (status: LeaveRequestStatus): 'success' | 'warning' | 'error' {
-    return statusColorByValue[status]
-  }
-
-  async function fetchApiJson<T> (url: string): Promise<T | null> {
-    try {
-      const response = await fetch(url)
-
-      if (!response.ok) {
-        return null
-      }
-
-      return await response.json() as T
-    } catch {
-      return null
-    }
-  }
-
   async function loadRequestsPageData (): Promise<void> {
-    const [employeesResponse, leaveRequestsResponse, jobPositionsResponse, leaveTypesResponse] = await Promise.all([
-      fetchApiJson<Employee[]>('/api/employees'),
-      fetchApiJson<LeaveRequest[]>('/api/leave-requests'),
-      fetchApiJson<JobPosition[]>('/api/job-positions'),
-      fetchApiJson<LeaveType[]>('/api/leave-types'),
-    ])
+    isLoading.value = true
+    loadError.value = null
 
-    employees.value = employeesResponse ?? []
-    leaveRequests.value = leaveRequestsResponse ?? []
-    jobPositions.value = jobPositionsResponse ?? []
-    leaveTypes.value = leaveTypesResponse ?? []
+    try {
+      const [employeesResponse, leaveRequestsResponse, jobPositionsResponse, leaveTypesResponse] = await Promise.all([
+        getEmployees(),
+        getLeaveRequests(),
+        getJobPositions(),
+        getLeaveTypes(),
+      ])
+
+      employees.value = employeesResponse
+      leaveRequests.value = leaveRequestsResponse
+      jobPositions.value = jobPositionsResponse
+      leaveTypes.value = leaveTypesResponse
+    } catch (error) {
+      employees.value = []
+      leaveRequests.value = []
+      jobPositions.value = []
+      leaveTypes.value = []
+      loadError.value = error instanceof Error
+        ? error.message
+        : 'Data žádostí se nepodařilo načíst.'
+    } finally {
+      isLoading.value = false
+    }
   }
 
-  const employeeById = computed(() => {
-    return new Map(employees.value.map(employee => [employee.id, employee]))
-  })
-
-  const workplaceById = computed(() => {
-    return new Map(jobPositions.value.map(position => [position.id, position.name]))
-  })
-
-  const leaveTypeLabelById = computed(() => {
-    return new Map(leaveTypes.value.map(type => [type.id, type.label]))
-  })
+  const employeeById = computed(() => new Map(employees.value.map(employee => [employee.id, employee])))
+  const workplaceById = computed(() => new Map(jobPositions.value.map(position => [position.id, position.name])))
+  const leaveTypeLabelById = computed(() => new Map(leaveTypes.value.map(type => [type.id, type.label])))
 
   const typeFilterItems = computed<Array<{ title: string, value: TypeFilterValue }>>(() => {
     return [
       { title: 'Všechny typy', value: 'all' },
-      ...leaveTypes.value.map(type => ({
-        title: type.label,
-        value: type.id,
-      })),
+      ...leaveTypes.value.map(type => ({ title: type.label, value: type.id })),
     ]
   })
 
   const leaveRequestRows = computed<LeaveRequestRow[]>(() => {
     return leaveRequests.value.map(request => {
       const employee = employeeById.value.get(request.employeeId)
-      const employeeName = employee
-        ? `${employee.lastName} ${employee.firstName}`
-        : safeUnknownEmployee
-
+      const employeeName = employee ? `${employee.lastName} ${employee.firstName}` : safeUnknownEmployee
       const workplace = employee
         ? (workplaceById.value.get(employee.jobPositionId) ?? safeUnknownWorkplace)
         : safeUnknownWorkplace
-
       const typeLabel = leaveTypeLabelById.value.get(request.type) ?? safeUnknownType
       const createdAtValue = request.requestedAt ?? ''
       const updatedAtValue = request.updatedAt ?? request.requestedAt ?? ''
@@ -238,7 +146,7 @@
         endDateSort: getDateSortValue(request.endDate),
         createdAtSort: getDateSortValue(createdAtValue),
         updatedAtSort: getDateSortValue(updatedAtValue),
-        statusLabel: statusLabelByValue[request.status],
+        statusLabel: leaveRequestStatusLabelsAdjective[request.status],
         statusRaw: request.status,
         note: request.note ?? '',
         rejectionReason: request.rejectionReason ?? null,
@@ -247,21 +155,26 @@
     })
   })
 
-  const filteredRequestRows = computed<LeaveRequestRow[]>(() => {
-    const query = searchRequests.value.trim().toLocaleLowerCase()
+  const {
+    searchRequests,
+    statusFilter,
+    typeFilter,
+    activeFilterChips,
 
-    return leaveRequestRows.value.filter(request => {
-      const matchesStatus = statusFilter.value === 'all' || request.statusRaw === statusFilter.value
-      const matchesType = typeFilter.value === 'all' || request.typeRaw === typeFilter.value
-
-      if (!matchesStatus || !matchesType) {
-        return false
-      }
-
-      if (!query) {
-        return true
-      }
-
+    itemsPerPageOptions,
+    itemsPerPage,
+    currentPage,
+    pageCount,
+    paginatedRows: paginatedRequestRows,
+    paginationLabel,
+    handleItemsPerPageChange,
+    resetFilters,
+    removeFilterChip,
+  } = useLeaveRequestsTable({
+    rows: leaveRequestRows,
+    statusLabels: leaveRequestStatusLabelsAdjective,
+    getTypeLabel: typeRaw => leaveTypeLabelById.value.get(typeRaw) ?? typeRaw,
+    getSearchText: request => {
       return [
         request.employeeName,
         request.workplace,
@@ -269,62 +182,29 @@
         request.statusLabel,
         request.createdAt,
         request.updatedAt,
-      ]
-        .join(' ')
-        .toLocaleLowerCase()
-        .includes(query)
-    })
+      ].join(' ')
+    },
   })
 
-  const activeFilterChips = computed<ActiveFilterChip[]>(() => {
-    const chips: ActiveFilterChip[] = []
-
-    if (statusFilter.value !== 'all') {
-      chips.push({
-        key: 'status',
-        label: `Stav: ${statusLabelByValue[statusFilter.value]}`,
-      })
-    }
-
-    if (typeFilter.value !== 'all') {
-      const typeLabel = leaveTypeLabelById.value.get(typeFilter.value) ?? typeFilter.value
-      chips.push({
-        key: 'type',
-        label: `Typ: ${typeLabel}`,
-      })
-    }
-
-    if (searchRequests.value.trim()) {
-      chips.push({
-        key: 'search',
-        label: `Hledání: ${searchRequests.value.trim()}`,
-      })
-    }
-
-    return chips
-  })
-
-  const pageCount = computed(() => {
-    const totalItems = filteredRequestRows.value.length
-    return Math.max(1, Math.ceil(totalItems / itemsPerPage.value))
-  })
-
-  const paginatedRequestRows = computed<LeaveRequestRow[]>(() => {
-    const startIndex = (currentPage.value - 1) * itemsPerPage.value
-    return filteredRequestRows.value.slice(startIndex, startIndex + itemsPerPage.value)
-  })
-
-  const paginationLabel = computed(() => {
-    const totalItems = filteredRequestRows.value.length
-
-    if (totalItems === 0) {
-      return '0–0 z 0'
-    }
-
-    const start = (currentPage.value - 1) * itemsPerPage.value + 1
-    const end = Math.min(currentPage.value * itemsPerPage.value, totalItems)
-
-    return `${start}–${end} z ${totalItems}`
+  const {
+    dialogVisible: detailDialogVisible,
+    reviewAction,
+    rejectionReason,
+    selectedRequestId,
+    isSavingReview,
+    reviewError,
+    isRejectAction,
+    reviewFormValid,
+    openDialog: openDetailDialog,
+    closeDialog: closeDetailDialog,
+    submitReview,
+  } = useLeaveRequestReview({
+    leaveRequests,
+    submitErrorMessage: 'Rozhodnutí se nepodařilo uložit.',
+    getInitialState: request => ({
+      action: request?.status && request.status !== 'pending' ? request.status : null,
+      rejectionReason: request?.rejectionReason ?? '',
+    }),
   })
 
   const selectedRequest = computed<LeaveRequestRow | null>(() => {
@@ -335,121 +215,16 @@
     return leaveRequestRows.value.find(request => request.id === selectedRequestId.value) ?? null
   })
 
-  const isRejectAction = computed(() => reviewAction.value === 'rejected')
-
-  const reviewFormValid = computed(() => {
-    if (!reviewAction.value) {
-      return false
+  const noDataMessage = computed(() => {
+    if (isLoading.value) {
+      return 'Načítání žádostí…'
     }
 
-    if (reviewAction.value === 'rejected') {
-      return rejectionReason.value.trim().length > 0
+    if (leaveRequestRows.value.length === 0) {
+      return 'Zatím nejsou evidovány žádné žádosti.'
     }
 
-    return true
-  })
-
-  function openDetailDialog (requestId: string): void {
-    const request = leaveRequests.value.find(item => item.id === requestId)
-
-    selectedRequestId.value = requestId
-    reviewAction.value = request?.status === 'pending' ? null : request?.status ?? null
-    rejectionReason.value = request?.rejectionReason ?? ''
-    reviewError.value = null
-    detailDialogVisible.value = true
-  }
-
-  function closeDetailDialog (): void {
-    detailDialogVisible.value = false
-    selectedRequestId.value = null
-    reviewAction.value = null
-    rejectionReason.value = ''
-    reviewError.value = null
-  }
-
-  async function submitReview (): Promise<void> {
-    if (!selectedRequestId.value || !reviewAction.value) {
-      return
-    }
-
-    isSavingReview.value = true
-    reviewError.value = null
-
-    try {
-      const response = await fetch(`/api/leave-requests/${selectedRequestId.value}/review`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          status: reviewAction.value,
-          rejectionReason: reviewAction.value === 'rejected' ? rejectionReason.value.trim() : null,
-        }),
-      })
-
-      if (!response.ok) {
-        const errorBody = await response.json().catch(() => null) as ApiErrorResponse | null
-        throw new Error(errorBody?.message ?? 'Uložení rozhodnutí selhalo.')
-      }
-
-      const updatedRequest = await response.json() as LeaveRequest
-      leaveRequests.value = leaveRequests.value.map(request => {
-        return request.id === updatedRequest.id ? updatedRequest : request
-      })
-
-      closeDetailDialog()
-    } catch (error) {
-      reviewError.value = error instanceof Error
-        ? error.message
-        : 'Rozhodnutí se nepodařilo uložit.'
-    } finally {
-      isSavingReview.value = false
-    }
-  }
-
-  function handleItemsPerPageChange (value: number | string | null): void {
-    const nextValue = typeof value === 'number' ? value : Number(value)
-
-    if (!Number.isFinite(nextValue) || nextValue <= 0) {
-      return
-    }
-
-    itemsPerPage.value = nextValue
-    currentPage.value = 1
-  }
-
-  function resetFilters (): void {
-    searchRequests.value = ''
-    statusFilter.value = 'all'
-    typeFilter.value = 'all'
-    currentPage.value = 1
-  }
-
-  function removeFilterChip (key: ActiveFilterChip['key']): void {
-    if (key === 'search') {
-      searchRequests.value = ''
-    }
-
-    if (key === 'status') {
-      statusFilter.value = 'all'
-    }
-
-    if (key === 'type') {
-      typeFilter.value = 'all'
-    }
-
-    currentPage.value = 1
-  }
-
-  watch(filteredRequestRows, rows => {
-    if (rows.length === 0) {
-      currentPage.value = 1
-      return
-    }
-
-    if (currentPage.value > pageCount.value) {
-      currentPage.value = pageCount.value
-    }
+    return 'Pro zvolené filtry nebyly nalezeny žádné žádosti.'
   })
 
   onMounted(() => {
@@ -464,12 +239,21 @@
     <div class="mt-12 block w-full px-2 sm:px-4">
       <v-card>
         <div class="flex w-full items-center justify-between bg-primary px-4 py-2">
-          <h3 class="text-2xl uppercase">Žádosti o dovolenou</h3>
+          <h3 class="text-2xl uppercase pr-4">Žádosti</h3>
 
-          <div class="my-2 flex w-full flex-wrap items-center justify-end gap-2">
+          <div class="w-3/12" />
+
+          <div class="flex w-8/12 gap-4 items-center">
+            <v-text-field
+              v-model="searchRequests"
+              density="comfortable"
+              hide-details
+              prepend-inner-icon="mdi-magnify"
+              variant="outlined"
+            />
             <v-select
               v-model="statusFilter"
-              class="requests-filter-select"
+              class="requests-filter-select w-[10px]"
               density="comfortable"
               hide-details
               :items="statusFilterItems"
@@ -477,20 +261,12 @@
             />
             <v-select
               v-model="typeFilter"
-              class="requests-filter-select"
+              class="requests-filter-select w-[10px]"
               density="comfortable"
               hide-details
               :items="typeFilterItems"
               variant="outlined"
             />
-            <div class="w-full max-w-[360px]">
-              <v-text-field
-                v-model="searchRequests"
-                hide-details
-                prepend-inner-icon="mdi-magnify"
-                variant="outlined"
-              />
-            </div>
             <v-btn
               class="shrink-0"
               variant="outlined"
@@ -499,6 +275,7 @@
               Reset filtrů
             </v-btn>
           </div>
+
         </div>
 
         <v-divider />
@@ -510,6 +287,7 @@
           <v-chip
             v-for="chip in activeFilterChips"
             :key="chip.key"
+            class="requests-active-filter-chip"
             closable
             size="small"
             variant="outlined"
@@ -520,6 +298,24 @@
         </div>
 
         <v-divider v-if="activeFilterChips.length > 0" />
+
+        <v-alert
+          v-if="loadError"
+          class="mx-4 my-4"
+          type="error"
+          variant="tonal"
+        >
+          {{ loadError }}
+          <template #append>
+            <v-btn
+              size="small"
+              variant="text"
+              @click="loadRequestsPageData"
+            >
+              Zkusit znovu
+            </v-btn>
+          </template>
+        </v-alert>
 
         <div class="overflow-x-auto">
           <v-data-table
@@ -532,8 +328,10 @@
             }"
             :headers="requestTableHeaders"
             :hide-default-footer="true"
-            :items="paginatedRequestRows"
             item-value="id"
+            :items="paginatedRequestRows"
+            :loading="isLoading"
+            loading-text="Načítání žádostí…"
           >
             <template #item.startDateSort="{ item }">
               {{ item.startDate }}
@@ -565,6 +363,7 @@
               <v-btn
                 class="px-2"
                 color="success"
+                prepend-icon="mdi-magnify"
                 rounded="xl"
                 size="small"
                 variant="flat"
@@ -576,12 +375,11 @@
 
             <template #no-data>
               <div class="px-4 py-6 text-center">
-                Nebyly nalezeny žádné žádosti.
+                {{ noDataMessage }}
               </div>
             </template>
           </v-data-table>
         </div>
-
         <v-divider />
 
         <div class="flex flex-col gap-4 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
@@ -742,35 +540,44 @@
 </template>
 
 <style scoped>
-  .requests-filter-select {
-    min-width: 180px;
-  }
+.requests-filter-select {
+  min-width: 180px;
+}
 
-  :deep(.requests-col-status),
-  :deep(.requests-col-detail) {
-    white-space: nowrap;
-    width: 1%;
-  }
+:deep(.requests-col-status),
+:deep(.requests-col-detail) {
+  white-space: nowrap;
+  width: 1%;
+}
 
-  .review-chip {
-    cursor: pointer;
-    font-size: 0.78rem;
-    font-weight: 600;
-    letter-spacing: 0.01em;
-  }
+.review-chip {
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
 
-  :deep(.review-chip.v-chip--variant-flat),
-  :deep(.review-chip.v-chip--variant-flat .v-chip__content) {
-    color: white;
-  }
+:deep(.review-chip.v-chip--variant-flat),
+:deep(.review-chip.v-chip--variant-flat .v-chip__content) {
+  color: white;
+}
 
-  .review-chip--approve {
-    color: rgb(var(--v-theme-success));
-    border-color: rgb(var(--v-theme-success));
-  }
+.review-chip--approve {
+  color: rgb(var(--v-theme-success));
+  border-color: rgb(var(--v-theme-success));
+}
 
-  .review-chip--reject {
-    color: rgb(var(--v-theme-error));
-    border-color: rgb(var(--v-theme-error));
-  }
+.review-chip--reject {
+  color: rgb(var(--v-theme-error));
+  border-color: rgb(var(--v-theme-error));
+}
+
+:deep(.requests-active-filter-chip .v-chip__content) {
+  padding-inline: 0.25rem;
+}
+
+:deep(.requests-active-filter-chip .v-chip__close) {
+  margin-inline-start: 0.125rem;
+  margin-inline-end: 0;
+}
 </style>

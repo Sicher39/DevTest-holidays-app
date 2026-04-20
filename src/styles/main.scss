@@ -3,33 +3,65 @@
     font-family: var(--font-mono);
   }
 
-  input,
-  select {
-    padding-left: 0.5rem;
-    padding-right: 0.5rem;
-  }
-
-  .v-text-field .v-field__input,
-  .v-select .v-field__input,
-  .v-autocomplete .v-field__input,
-  .v-textarea .v-field__input {
-    padding-left: 0.5rem;
-    padding-right: 0.5rem;
-    padding-inline-start: 0.5rem;
-  }
 
   .v-select .v-select__selection,
-  .v-autocomplete .v-autocomplete__selection,
-  .v-field .v-field__input > input {
-    margin-inline-start: 0;
-    padding-inline-start: 0.5rem;
+  .v-autocomplete .v-autocomplete__selection {
+    margin-inline-start: 0 !important;
   }
+
 
   .v-select.v-select--selected .v-field__input > input {
     opacity: 0 !important;
   }
 
-  .v-field--variant-outlined:not(.v-field--single-line):not(.v-field--no-label) {
-    --v-field-padding-top: 8px;
+  .v-select__content .v-list-item,
+  .v-autocomplete__content .v-list-item {
+    padding-left: 5px !important;
+    padding-right: 5px !important;
+    padding-inline-start: 5px !important;
+    padding-inline-end: 5px !important;
+  }
+
+  .v-select .v-field__input,
+  .v-autocomplete .v-field__input {
+    padding-inline-start: 5px !important;
+  }
+
+  .v-select .v-select__menu-icon,
+  .v-autocomplete .v-autocomplete__menu-icon {
+    margin-inline-start: 6px;
+  }
+
+  .v-field {
+    box-shadow: inset 0 -1px rgba(var(--v-border-color), var(--v-border-opacity));
+  }
+
+  /* Global textarea content offset (text + label) */
+  .v-textarea textarea.v-field__input {
+    padding-top: var(--v-field-input-padding-top) !important;
+    padding-inline-start: 8px !important;
+    padding-inline-end: 8px !important;
+  }
+
+
+  .v-textarea .v-label.v-field-label {
+    inset-inline-start: 8px !important;
+  }
+
+  /* Prevent placeholder/label overlap only when textarea has a label */
+  .v-textarea .v-field:not(.v-field--no-label) textarea.v-field__input::placeholder {
+    opacity: 0 !important;
+  }
+
+  .v-btn:not(.v-btn--icon):not(.v-btn--stacked) {
+    .v-btn__prepend,
+    .v-btn__content > .v-icon--start {
+      margin-inline: 0 12px !important;
+    }
+
+    .v-btn__append,
+    .v-btn__content > .v-icon--end {
+      margin-inline: 12px 0 !important;
+    }
   }
 }

@@ -1,27 +1,12 @@
-﻿<script setup lang="ts">
+<script setup lang="ts">
   import { useForm } from 'vee-validate'
   import { computed, onMounted, ref, watch } from 'vue'
   import * as yup from 'yup'
   import MainRow from '@/components/MainRow.vue'
   import PageHeader from '@/components/PageHeader.vue'
-
-  type EmployeeApiItem = {
-    id: string
-    firstName?: string
-    lastName?: string
-    name?: string
-  }
-
-  type LeaveTypeApiItem = {
-    id: string
-    name?: string
-    label?: string
-    value?: string
-  }
-
-  type ApiErrorResponse = {
-    message?: string
-  }
+  import { getEmployees, getLeaveTypes } from '@/services/mock/referenceDataService'
+  import { createLeaveRequest } from '@/services/mock/leaveRequestsService'
+  import type { CreateLeaveRequestInput, Employee, LeaveType } from '@/types/leave'
 
   type EmployeeOption = {
     id: string
@@ -51,6 +36,8 @@
     note: '',
   }
 
+  const employees = ref<Employee[]>([])
+  const leaveTypes = ref<LeaveType[]>([])
   const employeeOptions = ref<EmployeeOption[]>([])
   const leaveTypeOptions = ref<LeaveTypeOption[]>([])
 
@@ -109,58 +96,18 @@
 
   const isOtherTypeSelected = computed(() => type.value === 'other')
 
-  function normalizeEmployeeOptions (items: unknown[]): EmployeeOption[] {
-    return items
-      .map(item => {
-        const employee = item as Partial<EmployeeApiItem>
-
-        if (!employee?.id) {
-          return null
-        }
-
-        const fullName = employee.name
-          ? employee.name.trim()
-          : [employee.firstName, employee.lastName].filter(Boolean).join(' ').trim()
-
-        if (!fullName) {
-          return null
-        }
-
-        return {
-          id: employee.id,
-          fullName,
-        }
-      })
-      .filter((item): item is EmployeeOption => item !== null)
+  function mapEmployeeOptions (items: Employee[]): EmployeeOption[] {
+    return items.map(employee => ({
+      id: employee.id,
+      fullName: [employee.firstName, employee.lastName].filter(Boolean).join(' ').trim(),
+    }))
   }
 
-  function normalizeLeaveTypeOptions (items: unknown[]): LeaveTypeOption[] {
-    return items
-      .map(item => {
-        const leaveType = item as Partial<LeaveTypeApiItem>
-        const value = leaveType.value ?? leaveType.id
-        const title = leaveType.label ?? leaveType.name
-
-        if (!value || !title) {
-          return null
-        }
-
-        return {
-          value,
-          title,
-        }
-      })
-      .filter((item): item is LeaveTypeOption => item !== null)
-  }
-
-  async function fetchJson<T> (url: string): Promise<T> {
-    const response = await fetch(url)
-
-    if (!response.ok) {
-      throw new Error(`Načtení ${url} selhalo se stavem ${response.status}.`)
-    }
-
-    return await response.json() as T
+  function mapLeaveTypeOptions (items: LeaveType[]): LeaveTypeOption[] {
+    return items.map(typeItem => ({
+      value: typeItem.id,
+      title: typeItem.label,
+    }))
   }
 
   async function loadFormOptions () {
@@ -169,12 +116,14 @@
 
     try {
       const [employeesResponse, leaveTypesResponse] = await Promise.all([
-        fetchJson<unknown[]>('/api/employees'),
-        fetchJson<unknown[]>('/api/leave-types'),
+        getEmployees(),
+        getLeaveTypes(),
       ])
 
-      employeeOptions.value = normalizeEmployeeOptions(employeesResponse)
-      leaveTypeOptions.value = normalizeLeaveTypeOptions(leaveTypesResponse)
+      employees.value = employeesResponse
+      leaveTypes.value = leaveTypesResponse
+      employeeOptions.value = mapEmployeeOptions(employeesResponse)
+      leaveTypeOptions.value = mapLeaveTypeOptions(leaveTypesResponse)
 
       if (employeeOptions.value.length === 0 || leaveTypeOptions.value.length === 0) {
         loadError.value = 'Nepodařilo se načíst všechny podklady pro formulář. Zkuste to prosím znovu.'
@@ -189,7 +138,7 @@
   const onSubmit = handleSubmit(async values => {
     submitError.value = null
 
-    const payload = {
+    const payload: CreateLeaveRequestInput = {
       employeeId: values.employeeId,
       startDate: values.startDate,
       endDate: values.endDate,
@@ -199,19 +148,7 @@
     }
 
     try {
-      const response = await fetch('/api/leave-requests', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      })
-
-      if (!response.ok) {
-        const errorBody = await response.json().catch(() => null) as ApiErrorResponse | null
-        throw new Error(errorBody?.message ?? 'Odeslání žádosti selhalo.')
-      }
-
+      await createLeaveRequest(payload, employees.value, leaveTypes.value)
       successSnackbarVisible.value = true
       resetForm({ values: defaultFormValues })
     } catch (error) {
@@ -235,8 +172,8 @@
 <template>
   <PageHeader title="Nová žádost o dovolenou" />
   <MainRow>
-    <div class="w-full px-2 sm:px-4">
-      <v-card class="mt-6 w-full">
+    <div class="flex w-full px-2 justify-center ">
+      <v-card class="mt-6 w-full md:w-8/12">
         <v-card-title class="bg-primary px-6 py-4 text-h6 uppercase">
           Formulář žádosti
         </v-card-title>
@@ -332,7 +269,6 @@
                   :error-messages="errors.otherTypeDetail ? [errors.otherTypeDetail] : []"
                   label="Jiný typ dovolené"
                   placeholder="Doplňte jiný typ"
-
                   variant="outlined"
                 />
               </v-col>
@@ -360,6 +296,8 @@
               <v-btn
                 class="px-2"
                 color="primary"
+                append-icon="mdi-send-outline"
+                rounded="lg "
                 :disabled="isOptionsLoading"
                 :loading="isSubmitting"
                 type="submit"
