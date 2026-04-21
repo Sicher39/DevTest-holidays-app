@@ -95,6 +95,18 @@
   const [note] = defineField('note')
 
   const isOtherTypeSelected = computed(() => type.value === 'other')
+  const isRequiredFieldsFilled = computed(() => {
+    const hasEmployee = (employeeId.value ?? '').trim().length > 0
+    const hasStartDate = startDate.value.trim().length > 0
+    const hasEndDate = endDate.value.trim().length > 0
+    const hasType = type.value.trim().length > 0
+    const hasOtherTypeDetail = type.value !== 'other' || otherTypeDetail.value.trim().length > 0
+
+    return hasEmployee && hasStartDate && hasEndDate && hasType && hasOtherTypeDetail
+  })
+  const isSubmitDisabled = computed(() => {
+    return isOptionsLoading.value || isSubmitting.value || !isRequiredFieldsFilled.value
+  })
 
   function mapEmployeeOptions (items: Employee[]): EmployeeOption[] {
     return items.map(employee => ({
@@ -294,13 +306,13 @@
 
             <div class="flex justify-end">
               <v-btn
-                class="px-2"
-                color="primary"
+                class="rounded-xl px-2"
+                color="success"
                 append-icon="mdi-send-outline"
-                rounded="lg "
-                :disabled="isOptionsLoading"
+                :disabled="isSubmitDisabled"
                 :loading="isSubmitting"
                 type="submit"
+                variant="flat"
               >
                 Odeslat žádost
               </v-btn>
