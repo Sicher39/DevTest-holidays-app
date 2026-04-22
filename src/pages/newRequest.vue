@@ -1,12 +1,12 @@
 <script setup lang="ts">
+  import type { CreateLeaveRequestInput, Employee, LeaveType } from '@/types/leave'
   import { useForm } from 'vee-validate'
   import { computed, onMounted, ref, watch } from 'vue'
   import * as yup from 'yup'
   import MainRow from '@/components/MainRow.vue'
   import PageHeader from '@/components/PageHeader.vue'
-  import { getEmployees, getLeaveTypes } from '@/services/mock/referenceDataService'
   import { createLeaveRequest } from '@/services/mock/leaveRequestsService'
-  import type { CreateLeaveRequestInput, Employee, LeaveType } from '@/types/leave'
+  import { getEmployees, getLeaveTypes } from '@/services/mock/referenceDataService'
 
   type EmployeeOption = {
     id: string
@@ -95,18 +95,7 @@
   const [note] = defineField('note')
 
   const isOtherTypeSelected = computed(() => type.value === 'other')
-  const isRequiredFieldsFilled = computed(() => {
-    const hasEmployee = (employeeId.value ?? '').trim().length > 0
-    const hasStartDate = startDate.value.trim().length > 0
-    const hasEndDate = endDate.value.trim().length > 0
-    const hasType = type.value.trim().length > 0
-    const hasOtherTypeDetail = type.value !== 'other' || otherTypeDetail.value.trim().length > 0
-
-    return hasEmployee && hasStartDate && hasEndDate && hasType && hasOtherTypeDetail
-  })
-  const isSubmitDisabled = computed(() => {
-    return isOptionsLoading.value || isSubmitting.value || !isRequiredFieldsFilled.value
-  })
+  const isSubmitDisabled = computed(() => isOptionsLoading.value || isSubmitting.value)
 
   function mapEmployeeOptions (items: Employee[]): EmployeeOption[] {
     return items.map(employee => ({
@@ -122,7 +111,7 @@
     }))
   }
 
-  async function loadFormOptions () {
+  async function loadFormOptions (): Promise<void> {
     isOptionsLoading.value = true
     loadError.value = null
 
@@ -140,8 +129,10 @@
       if (employeeOptions.value.length === 0 || leaveTypeOptions.value.length === 0) {
         loadError.value = 'Nepodařilo se načíst všechny podklady pro formulář. Zkuste to prosím znovu.'
       }
-    } catch {
-      loadError.value = 'Načtení dat formuláře selhalo. Zkuste to prosím znovu.'
+    } catch (error) {
+      loadError.value = error instanceof Error
+        ? error.message
+        : 'Načtení dat formuláře selhalo. Zkuste to prosím znovu.'
     } finally {
       isOptionsLoading.value = false
     }
@@ -183,8 +174,9 @@
 
 <template>
   <PageHeader title="Nová žádost o dovolenou" />
+
   <MainRow>
-    <div class="flex w-full px-2 justify-center ">
+    <div class="flex w-full justify-center px-2">
       <v-card class="mt-6 w-full md:w-8/12">
         <v-card-title class="bg-primary px-6 py-4 text-h6 uppercase">
           Formulář žádosti
@@ -251,6 +243,7 @@
                   :disabled="isSubmitting"
                   :error-messages="errors.endDate ? [errors.endDate] : []"
                   label="Do"
+                  :min="startDate || undefined"
                   required
                   type="date"
                   variant="outlined"
@@ -306,9 +299,9 @@
 
             <div class="flex justify-end">
               <v-btn
+                append-icon="mdi-send-outline"
                 class="rounded-xl px-2"
                 color="success"
-                append-icon="mdi-send-outline"
                 :disabled="isSubmitDisabled"
                 :loading="isSubmitting"
                 type="submit"

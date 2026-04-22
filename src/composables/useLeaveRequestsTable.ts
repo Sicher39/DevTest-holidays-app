@@ -1,5 +1,6 @@
-import { computed, ref, watch, type ComputedRef, type Ref } from 'vue'
 import type { LeaveRequestStatus } from '@/types/leave'
+import { computed, type ComputedRef, ref, type Ref, watch } from 'vue'
+import { formatPaginationLabel } from '@/utils/pagination'
 
 export type StatusFilterValue = 'all' | LeaveRequestStatus
 export type TypeFilterValue = 'all' | string
@@ -96,16 +97,7 @@ export function useLeaveRequestsTable<Row extends LeaveRequestsTableRowBase> (op
   })
 
   const paginationLabel = computed(() => {
-    const totalItems = filteredRows.value.length
-
-    if (totalItems === 0) {
-      return '0–0 z 0'
-    }
-
-    const start = (currentPage.value - 1) * itemsPerPage.value + 1
-    const end = Math.min(currentPage.value * itemsPerPage.value, totalItems)
-
-    return `${start}–${end} z ${totalItems}`
+    return formatPaginationLabel(currentPage.value, itemsPerPage.value, filteredRows.value.length)
   })
 
   function handleItemsPerPageChange (value: number | string | null): void {

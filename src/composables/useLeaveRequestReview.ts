@@ -1,6 +1,6 @@
+import type { LeaveRequest, ReviewLeaveRequestInput } from '@/types/leave'
 import { computed, ref, type Ref } from 'vue'
 import { reviewLeaveRequest } from '@/services/mock/leaveRequestsService'
-import type { LeaveRequest, ReviewLeaveRequestInput } from '@/types/leave'
 
 type ReviewAction = ReviewLeaveRequestInput['status']
 

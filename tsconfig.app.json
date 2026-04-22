@@ -10,7 +10,8 @@
   ],
   "compilerOptions": {
     "composite": true,
-    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
+    "rootDir": ".",
+    "tsBuildInfoFile": "./.cache/tsconfig.app.tsbuildinfo",
     "baseUrl": ".",
     "paths": {
       "@/*": [

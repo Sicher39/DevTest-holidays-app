@@ -1,11 +1,19 @@
 <script setup lang="ts">
-  import type { Employee, JobPosition, LeaveRequest, LeaveRequestStatus, LeaveType } from '@/types/leave'
-  import { computed, onMounted, ref } from 'vue'
+  import type {
+    Employee,
+    JobPosition,
+    LeaveRequest,
+    LeaveRequestStatus,
+    LeaveType,
+    UpdateLeaveRequestInput,
+  } from '@/types/leave'
+  import { useForm } from 'vee-validate'
+  import { computed, onMounted, ref, watch } from 'vue'
+  import * as yup from 'yup'
   import MainRow from '@/components/MainRow.vue'
   import PageHeader from '@/components/PageHeader.vue'
-  import { useLeaveRequestReview } from '@/composables/useLeaveRequestReview'
   import { type StatusFilterValue, type TypeFilterValue, useLeaveRequestsTable } from '@/composables/useLeaveRequestsTable'
-  import { getLeaveRequests } from '@/services/mock/leaveRequestsService'
+  import { getLeaveRequests, updateLeaveRequest } from '@/services/mock/leaveRequestsService'
   import { getEmployees, getJobPositions, getLeaveTypes } from '@/services/mock/referenceDataService'
   import {
     formatDateToCzech,
@@ -16,6 +24,7 @@
 
   type LeaveRequestRow = {
     id: string
+    employeeId: string
     employeeName: string
     workplace: string
     typeLabel: string
@@ -24,6 +33,10 @@
     endDate: string
     createdAt: string
     updatedAt: string
+    startDateRaw: string
+    endDateRaw: string
+    createdAtRaw: string
+    updatedAtRaw: string
     startDateSort: number
     endDateSort: number
     createdAtSort: number
@@ -35,6 +48,27 @@
     otherTypeDetail?: string | null
   }
 
+  type LeaveTypeOption = {
+    value: string
+    title: string
+  }
+
+  type EmployeeOption = {
+    id: string
+    fullName: string
+  }
+
+  type RequestEditFormValues = {
+    employeeId: string
+    startDate: string
+    endDate: string
+    type: string
+    otherTypeDetail: string
+    note: string
+    status: LeaveRequestStatus
+    rejectionReason: string
+  }
+
   const employees = ref<Employee[]>([])
   const jobPositions = ref<JobPosition[]>([])
   const leaveRequests = ref<LeaveRequest[]>([])
@@ -42,6 +76,11 @@
 
   const isLoading = ref(false)
   const loadError = ref<string | null>(null)
+
+  const detailDialogVisible = ref(false)
+  const selectedRequestId = ref<string | null>(null)
+  const detailError = ref<string | null>(null)
+  const isSavingDetail = ref(false)
 
   const safeUnknownEmployee = 'Neznámý zaměstnanec'
   const safeUnknownWorkplace = 'Neznámé pracoviště'
@@ -54,7 +93,6 @@
     { title: 'Dovolená od', key: 'startDateSort', sortable: true },
     { title: 'Dovolená do', key: 'endDateSort', sortable: true },
     { title: 'Vytvořeno', key: 'createdAtSort', sortable: true },
-    { title: 'Změněno', key: 'updatedAtSort', sortable: true },
     {
       title: 'Stav žádosti',
       key: 'statusRaw',
@@ -80,6 +118,96 @@
     { title: 'Schválená', value: 'approved' },
     { title: 'Zamítnutá', value: 'rejected' },
   ]
+
+  const requestStatusItems: Array<{ title: string, value: LeaveRequestStatus }> = [
+    { title: 'Čekající', value: 'pending' },
+    { title: 'Schválená', value: 'approved' },
+    { title: 'Zamítnutá', value: 'rejected' },
+  ]
+
+  const requestEditSchema = yup.object({
+    employeeId: yup.string().required('Vyberte zaměstnance.'),
+    startDate: yup.string().required('Vyberte datum začátku.'),
+    endDate: yup
+      .string()
+      .required('Vyberte datum konce.')
+      .test('end-date-after-start', 'Datum "Do" nesmí být dříve než datum "Od".', (value, context) => {
+        const startDate = context.parent.startDate
+
+        if (!value || !startDate) {
+          return true
+        }
+
+        return new Date(value).getTime() >= new Date(startDate).getTime()
+      }),
+    type: yup.string().required('Vyberte typ dovolené.'),
+    otherTypeDetail: yup
+      .string()
+      .when('type', ([selectedType], schema) => {
+        if (selectedType === 'other') {
+          return schema.required('Doplňte jiný typ dovolené.')
+        }
+
+        return schema.notRequired()
+      }),
+    note: yup.string().notRequired(),
+    status: yup
+      .mixed<LeaveRequestStatus>()
+      .oneOf(['pending', 'approved', 'rejected'])
+      .required('Vyberte stav žádosti.'),
+    rejectionReason: yup
+      .string()
+      .when('status', ([status], schema) => {
+        if (status === 'rejected') {
+          return schema.required('Důvod zamítnutí je povinný.')
+        }
+
+        return schema.notRequired()
+      }),
+  })
+
+  const {
+    errors: detailFormErrors,
+    defineField,
+    handleSubmit,
+    resetForm,
+    setFieldValue,
+  } = useForm<RequestEditFormValues>({
+    initialValues: {
+      employeeId: '',
+      startDate: '',
+      endDate: '',
+      type: '',
+      otherTypeDetail: '',
+      note: '',
+      status: 'pending',
+      rejectionReason: '',
+    },
+    validationSchema: requestEditSchema,
+  })
+
+  const [employeeId] = defineField('employeeId')
+  const [startDate] = defineField('startDate')
+  const [endDate] = defineField('endDate')
+  const [type] = defineField('type')
+  const [otherTypeDetail] = defineField('otherTypeDetail')
+  const [note] = defineField('note')
+  const [status] = defineField('status')
+  const [rejectionReason] = defineField('rejectionReason')
+
+  const employeeOptions = computed<EmployeeOption[]>(() => {
+    return employees.value.map(employee => ({
+      id: employee.id,
+      fullName: [employee.firstName, employee.lastName].filter(Boolean).join(' ').trim(),
+    }))
+  })
+
+  const leaveTypeOptions = computed<LeaveTypeOption[]>(() => {
+    return leaveTypes.value.map(typeItem => ({
+      value: typeItem.id,
+      title: typeItem.label,
+    }))
+  })
 
   async function loadRequestsPageData (): Promise<void> {
     isLoading.value = true
@@ -117,7 +245,7 @@
   const typeFilterItems = computed<Array<{ title: string, value: TypeFilterValue }>>(() => {
     return [
       { title: 'Všechny typy', value: 'all' },
-      ...leaveTypes.value.map(type => ({ title: type.label, value: type.id })),
+      ...leaveTypes.value.map(typeItem => ({ title: typeItem.label, value: typeItem.id })),
     ]
   })
 
@@ -129,11 +257,12 @@
         ? (workplaceById.value.get(employee.jobPositionId) ?? safeUnknownWorkplace)
         : safeUnknownWorkplace
       const typeLabel = leaveTypeLabelById.value.get(request.type) ?? safeUnknownType
-      const createdAtValue = request.requestedAt ?? ''
-      const updatedAtValue = request.updatedAt ?? request.requestedAt ?? ''
+      const createdAtValue = request.requestedAt
+      const updatedAtValue = request.updatedAt ?? request.requestedAt
 
       return {
         id: request.id,
+        employeeId: request.employeeId,
         employeeName,
         workplace,
         typeLabel,
@@ -142,6 +271,10 @@
         endDate: formatDateToCzech(request.endDate),
         createdAt: formatDateToCzech(createdAtValue),
         updatedAt: formatDateToCzech(updatedAtValue),
+        startDateRaw: request.startDate,
+        endDateRaw: request.endDate,
+        createdAtRaw: createdAtValue,
+        updatedAtRaw: updatedAtValue,
         startDateSort: getDateSortValue(request.startDate),
         endDateSort: getDateSortValue(request.endDate),
         createdAtSort: getDateSortValue(createdAtValue),
@@ -160,7 +293,6 @@
     statusFilter,
     typeFilter,
     activeFilterChips,
-
     itemsPerPageOptions,
     itemsPerPage,
     currentPage,
@@ -180,34 +312,17 @@
         request.workplace,
         request.typeLabel,
         request.statusLabel,
+        request.startDate,
+        request.endDate,
         request.createdAt,
-        request.updatedAt,
+        request.note,
+        request.rejectionReason ?? '',
+        request.otherTypeDetail ?? '',
       ].join(' ')
     },
   })
 
-  const {
-    dialogVisible: detailDialogVisible,
-    reviewAction,
-    rejectionReason,
-    selectedRequestId,
-    isSavingReview,
-    reviewError,
-    isRejectAction,
-    reviewFormValid,
-    openDialog: openDetailDialog,
-    closeDialog: closeDetailDialog,
-    submitReview,
-  } = useLeaveRequestReview({
-    leaveRequests,
-    submitErrorMessage: 'Rozhodnutí se nepodařilo uložit.',
-    getInitialState: request => ({
-      action: request?.status && request.status !== 'pending' ? request.status : null,
-      rejectionReason: request?.rejectionReason ?? '',
-    }),
-  })
-
-  const selectedRequest = computed<LeaveRequestRow | null>(() => {
+  const selectedRequestRow = computed<LeaveRequestRow | null>(() => {
     if (!selectedRequestId.value) {
       return null
     }
@@ -215,9 +330,98 @@
     return leaveRequestRows.value.find(request => request.id === selectedRequestId.value) ?? null
   })
 
+  const isOtherTypeSelected = computed(() => type.value === 'other')
+  const isRejectStatusSelected = computed(() => status.value === 'rejected')
+
+  function openDetailDialog (requestId: string): void {
+    const request = leaveRequests.value.find(item => item.id === requestId)
+
+    if (!request) {
+      return
+    }
+
+    selectedRequestId.value = requestId
+    detailError.value = null
+    resetForm({
+      values: {
+        employeeId: request.employeeId,
+        startDate: request.startDate,
+        endDate: request.endDate,
+        type: request.type,
+        otherTypeDetail: request.otherTypeDetail ?? '',
+        note: request.note ?? '',
+        status: request.status,
+        rejectionReason: request.rejectionReason ?? '',
+      },
+    })
+    detailDialogVisible.value = true
+  }
+
+  function closeDetailDialog (): void {
+    detailDialogVisible.value = false
+    selectedRequestId.value = null
+    detailError.value = null
+    resetForm()
+  }
+
+  const submitDetailUpdate = handleSubmit(async values => {
+    const currentRequestId = selectedRequestId.value
+
+    if (!currentRequestId) {
+      return
+    }
+
+    detailError.value = null
+    isSavingDetail.value = true
+
+    const payload: UpdateLeaveRequestInput = {
+      employeeId: values.employeeId,
+      startDate: values.startDate,
+      endDate: values.endDate,
+      type: values.type,
+      otherTypeDetail: values.type === 'other' ? values.otherTypeDetail.trim() : null,
+      note: values.note.trim() || null,
+      status: values.status,
+      rejectionReason: values.status === 'rejected' ? values.rejectionReason.trim() : null,
+    }
+
+    try {
+      const updatedRequest = await updateLeaveRequest(
+        currentRequestId,
+        payload,
+        employees.value,
+        leaveTypes.value,
+      )
+
+      leaveRequests.value = leaveRequests.value.map(request => {
+        return request.id === updatedRequest.id ? updatedRequest : request
+      })
+
+      closeDetailDialog()
+    } catch (error) {
+      detailError.value = error instanceof Error
+        ? error.message
+        : 'Žádost se nepodařilo uložit.'
+    } finally {
+      isSavingDetail.value = false
+    }
+  })
+
+  watch(type, value => {
+    if (value !== 'other' && otherTypeDetail.value) {
+      setFieldValue('otherTypeDetail', '')
+    }
+  })
+
+  watch(status, value => {
+    if (value !== 'rejected' && rejectionReason.value) {
+      setFieldValue('rejectionReason', '')
+    }
+  })
+
   const noDataMessage = computed(() => {
     if (isLoading.value) {
-      return 'Načítání žádostí…'
+      return 'Načítání žádostí...'
     }
 
     if (leaveRequestRows.value.length === 0) {
@@ -238,66 +442,66 @@
   <MainRow>
     <div class="mt-12 block w-full px-2 sm:px-4">
       <v-card>
-        <div class="flex w-full items-center justify-between bg-primary px-4 py-2">
-          <h3 class="text-2xl uppercase pr-4">Žádosti</h3>
+        <div class="flex flex-col gap-4 bg-primary px-4 py-3">
+          <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <h3 class="pr-4 text-2xl uppercase">
+              Žádosti
+            </h3>
 
-          <div class="w-3/12" />
-
-          <div class="flex w-8/12 gap-4 items-center">
-            <v-text-field
-              v-model="searchRequests"
-              density="comfortable"
-              hide-details
-              prepend-inner-icon="mdi-magnify"
-              variant="outlined"
-            />
-            <v-select
-              v-model="statusFilter"
-              class="requests-filter-select w-[10px]"
-              density="comfortable"
-              hide-details
-              :items="statusFilterItems"
-              variant="outlined"
-            />
-            <v-select
-              v-model="typeFilter"
-              class="requests-filter-select w-[10px]"
-              density="comfortable"
-              hide-details
-              :items="typeFilterItems"
-              variant="outlined"
-            />
-            <v-btn
-              class="shrink-0"
-              variant="outlined"
-              @click="resetFilters"
-            >
-              Reset filtrů
-            </v-btn>
+            <div class="flex w-full flex-col gap-3 lg:max-w-5xl lg:flex-row lg:items-center">
+              <v-text-field
+                v-model="searchRequests"
+                density="comfortable"
+                hide-details
+                placeholder="Hledat v žádostech"
+                prepend-inner-icon="mdi-magnify"
+                variant="outlined"
+              />
+              <v-select
+                v-model="statusFilter"
+                class="requests-filter-select"
+                density="comfortable"
+                hide-details
+                :items="statusFilterItems"
+                variant="outlined"
+              />
+              <v-select
+                v-model="typeFilter"
+                class="requests-filter-select"
+                density="comfortable"
+                hide-details
+                :items="typeFilterItems"
+                variant="outlined"
+              />
+              <v-btn
+                class="shrink-0"
+                variant="outlined"
+                @click="resetFilters"
+              >
+                Reset filtrů
+              </v-btn>
+            </div>
           </div>
 
+          <div
+            v-if="activeFilterChips.length > 0"
+            class="flex flex-wrap gap-2"
+          >
+            <v-chip
+              v-for="chip in activeFilterChips"
+              :key="chip.key"
+              class="requests-active-filter-chip"
+              closable
+              size="small"
+              variant="outlined"
+              @click:close="removeFilterChip(chip.key)"
+            >
+              {{ chip.label }}
+            </v-chip>
+          </div>
         </div>
 
         <v-divider />
-
-        <div
-          v-if="activeFilterChips.length > 0"
-          class="flex flex-wrap gap-2 px-4 py-3"
-        >
-          <v-chip
-            v-for="chip in activeFilterChips"
-            :key="chip.key"
-            class="requests-active-filter-chip"
-            closable
-            size="small"
-            variant="outlined"
-            @click:close="removeFilterChip(chip.key)"
-          >
-            {{ chip.label }}
-          </v-chip>
-        </div>
-
-        <v-divider v-if="activeFilterChips.length > 0" />
 
         <v-alert
           v-if="loadError"
@@ -319,19 +523,18 @@
 
         <div class="overflow-x-auto">
           <v-data-table
-            class="px-2 min-w-[1280px]"
+            class="min-w-[1180px] px-2"
             :custom-key-sort="{
               startDateSort: (left: number, right: number) => left - right,
               endDateSort: (left: number, right: number) => left - right,
               createdAtSort: (left: number, right: number) => left - right,
-              updatedAtSort: (left: number, right: number) => left - right,
             }"
             :headers="requestTableHeaders"
             :hide-default-footer="true"
             item-value="id"
             :items="paginatedRequestRows"
             :loading="isLoading"
-            loading-text="Načítání žádostí…"
+            loading-text="Načítání žádostí..."
           >
             <template #item.startDateSort="{ item }">
               {{ item.startDate }}
@@ -343,10 +546,6 @@
 
             <template #item.createdAtSort="{ item }">
               {{ item.createdAt }}
-            </template>
-
-            <template #item.updatedAtSort="{ item }">
-              {{ item.updatedAt }}
             </template>
 
             <template #item.statusRaw="{ item }">
@@ -363,13 +562,13 @@
               <v-btn
                 class="px-2"
                 color="success"
-                prepend-icon="mdi-magnify"
+                prepend-icon="mdi-pencil"
                 rounded="xl"
                 size="small"
                 variant="flat"
                 @click="openDetailDialog(item.id)"
               >
-                Detail
+                Upravit
               </v-btn>
             </template>
 
@@ -380,6 +579,7 @@
             </template>
           </v-data-table>
         </div>
+
         <v-divider />
 
         <div class="flex flex-col gap-4 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
@@ -411,173 +611,218 @@
 
   <v-dialog
     v-model="detailDialogVisible"
-    max-width="720"
+    max-width="760"
   >
     <v-card>
       <v-card-title class="bg-primary px-6 py-4 text-center text-h6 uppercase text-white">
-        Detail žádosti
+        Úprava žádosti
       </v-card-title>
 
       <v-divider />
 
       <v-card-text class="px-6 py-6">
-        <div v-if="selectedRequest" class="grid gap-6">
+        <div v-if="selectedRequestRow" class="grid gap-6">
           <div class="grid gap-4 sm:grid-cols-2">
             <div>
-              <div class="text-caption text-medium-emphasis">Zaměstnanec</div>
-              <div class="font-weight-medium">{{ selectedRequest.employeeName }}</div>
+              <div class="text-caption text-medium-emphasis">
+                Vytvořeno
+              </div>
+              <div class="font-weight-medium">
+                {{ selectedRequestRow.createdAt }}
+              </div>
             </div>
             <div>
-              <div class="text-caption text-medium-emphasis">Pracoviště</div>
-              <div class="font-weight-medium">{{ selectedRequest.workplace }}</div>
-            </div>
-            <div>
-              <div class="text-caption text-medium-emphasis">Typ žádosti</div>
-              <div class="font-weight-medium">{{ selectedRequest.typeLabel }}</div>
-            </div>
-            <div v-if="selectedRequest.otherTypeDetail">
-              <div class="text-caption text-medium-emphasis">Upřesnění typu</div>
-              <div class="font-weight-medium">{{ selectedRequest.otherTypeDetail }}</div>
-            </div>
-            <div>
-              <div class="text-caption text-medium-emphasis">Dovolená od</div>
-              <div class="font-weight-medium">{{ selectedRequest.startDate }}</div>
-            </div>
-            <div>
-              <div class="text-caption text-medium-emphasis">Dovolená do</div>
-              <div class="font-weight-medium">{{ selectedRequest.endDate }}</div>
-            </div>
-            <div>
-              <div class="text-caption text-medium-emphasis">Vytvořeno</div>
-              <div class="font-weight-medium">{{ selectedRequest.createdAt }}</div>
-            </div>
-            <div>
-              <div class="text-caption text-medium-emphasis">Změněno</div>
-              <div class="font-weight-medium">{{ selectedRequest.updatedAt }}</div>
+              <div class="text-caption text-medium-emphasis">
+                Naposledy změněno
+              </div>
+              <div class="font-weight-medium">
+                {{ selectedRequestRow.updatedAt }}
+              </div>
             </div>
           </div>
 
-          <div>
-            <div class="text-caption text-medium-emphasis">Poznámka</div>
-            <div class="font-weight-medium">{{ selectedRequest.note || 'Bez poznámky' }}</div>
-          </div>
+          <v-card
+            border
+            class="rounded-xl"
+            variant="tonal"
+          >
+            <v-card-text class="grid gap-4 sm:grid-cols-2">
+              <div>
+                <div class="text-caption text-medium-emphasis">
+                  Typ dovolené
+                </div>
+                <div class="font-weight-medium">
+                  {{ selectedRequestRow.typeLabel }}
+                </div>
+              </div>
 
-          <div v-if="selectedRequest.rejectionReason">
-            <div class="text-caption text-medium-emphasis">Důvod zamítnutí</div>
-            <div class="font-weight-medium">{{ selectedRequest.rejectionReason }}</div>
-          </div>
+              <div v-if="selectedRequestRow.typeRaw === 'other'">
+                <div class="text-caption text-medium-emphasis">
+                  Upřesnění jiného volna
+                </div>
+                <div class="font-weight-medium">
+                  {{ selectedRequestRow.otherTypeDetail || 'Neuvedeno' }}
+                </div>
+              </div>
+
+              <div class="sm:col-span-2">
+                <div class="text-caption text-medium-emphasis">
+                  Poznámka zaměstnance
+                </div>
+                <div class="font-weight-medium whitespace-pre-line">
+                  {{ selectedRequestRow.note || 'Bez poznámky' }}
+                </div>
+              </div>
+            </v-card-text>
+          </v-card>
 
           <v-alert
-            v-if="reviewError"
+            v-if="detailError"
             type="error"
             variant="tonal"
           >
-            {{ reviewError }}
+            {{ detailError }}
           </v-alert>
 
-          <div class="grid gap-4">
-            <div>
-              <div class="mb-2 text-body-2 uppercase">Změna rozhodnutí</div>
-              <div class="mb-4 flex flex-wrap gap-2">
-                <v-chip
-                  class="review-chip review-chip--approve border px-4 uppercase"
-                  :color="reviewAction === 'approved' ? 'success' : undefined"
-                  size="small"
-                  :variant="reviewAction === 'approved' ? 'flat' : 'outlined'"
-                  @click="reviewAction = 'approved'"
-                >
-                  Schválit
-                </v-chip>
-                <v-chip
-                  class="review-chip review-chip--reject border px-4 uppercase"
-                  :color="reviewAction === 'rejected' ? 'error' : undefined"
-                  size="small"
-                  :variant="reviewAction === 'rejected' ? 'flat' : 'outlined'"
-                  @click="reviewAction = 'rejected'"
-                >
-                  Zamítnout
-                </v-chip>
-              </div>
-            </div>
+          <v-form @submit.prevent="submitDetailUpdate">
+            <v-row>
+              <v-col cols="12" md="6">
+                <v-autocomplete
+                  v-model="employeeId"
+                  :disabled="isSavingDetail"
+                  :error-messages="detailFormErrors.employeeId ? [detailFormErrors.employeeId] : []"
+                  item-title="fullName"
+                  item-value="id"
+                  :items="employeeOptions"
+                  label="Zaměstnanec"
+                  variant="outlined"
+                />
+              </v-col>
 
-            <v-textarea
-              v-if="isRejectAction"
-              v-model="rejectionReason"
-              auto-grow
-              class="py-2"
-              label="Důvod zamítnutí"
-              placeholder="Doplňte důvod zamítnutí"
-              rows="3"
-              :rules="[(value: string) => !!value?.trim() || 'Důvod zamítnutí je povinný.']"
-            />
-          </div>
+              <v-col cols="12" md="6">
+                <v-select
+                  v-model="type"
+                  :disabled="isSavingDetail"
+                  :error-messages="detailFormErrors.type ? [detailFormErrors.type] : []"
+                  item-title="title"
+                  item-value="value"
+                  :items="leaveTypeOptions"
+                  label="Typ žádosti"
+                  variant="outlined"
+                />
+              </v-col>
+
+              <v-col v-if="isOtherTypeSelected" cols="12">
+                <v-text-field
+                  v-model="otherTypeDetail"
+                  :disabled="isSavingDetail"
+                  :error-messages="detailFormErrors.otherTypeDetail ? [detailFormErrors.otherTypeDetail] : []"
+                  label="Upřesnění jiného typu"
+                  variant="outlined"
+                />
+              </v-col>
+
+              <v-col cols="12" md="6">
+                <v-text-field
+                  v-model="startDate"
+                  :disabled="isSavingDetail"
+                  :error-messages="detailFormErrors.startDate ? [detailFormErrors.startDate] : []"
+                  label="Dovolená od"
+                  type="date"
+                  variant="outlined"
+                />
+              </v-col>
+
+              <v-col cols="12" md="6">
+                <v-text-field
+                  v-model="endDate"
+                  :disabled="isSavingDetail"
+                  :error-messages="detailFormErrors.endDate ? [detailFormErrors.endDate] : []"
+                  label="Dovolená do"
+                  :min="startDate || undefined"
+                  type="date"
+                  variant="outlined"
+                />
+              </v-col>
+
+              <v-col cols="12" md="6">
+                <v-select
+                  v-model="status"
+                  :disabled="isSavingDetail"
+                  :error-messages="detailFormErrors.status ? [detailFormErrors.status] : []"
+                  :items="requestStatusItems"
+                  label="Stav žádosti"
+                  variant="outlined"
+                />
+              </v-col>
+
+              <v-col v-if="isRejectStatusSelected" cols="12" md="6">
+                <v-textarea
+                  v-model="rejectionReason"
+                  auto-grow
+                  :disabled="isSavingDetail"
+                  :error-messages="detailFormErrors.rejectionReason ? [detailFormErrors.rejectionReason] : []"
+                  label="Důvod zamítnutí"
+                  rows="2"
+                  variant="outlined"
+                />
+              </v-col>
+
+              <v-col cols="12">
+                <v-textarea
+                  v-model="note"
+                  auto-grow
+                  :disabled="isSavingDetail"
+                  label="Poznámka"
+                  rows="3"
+                  variant="outlined"
+                />
+              </v-col>
+            </v-row>
+
+            <div class="mt-4 flex justify-end gap-3">
+              <v-btn
+                class="rounded-xl"
+                variant="text"
+                @click="closeDetailDialog"
+              >
+                Zrušit
+              </v-btn>
+              <v-btn
+                append-icon="mdi-content-save"
+                class="rounded-xl px-2"
+                color="success"
+                :loading="isSavingDetail"
+                type="submit"
+                variant="flat"
+              >
+                Uložit změny
+              </v-btn>
+            </div>
+          </v-form>
         </div>
       </v-card-text>
-
-      <v-divider />
-
-      <v-card-actions class="justify-end px-2 py-4">
-        <v-btn
-          class="rounded-xl"
-          variant="text"
-          @click="closeDetailDialog"
-        >
-          Zavřít
-        </v-btn>
-        <v-btn
-          class="rounded-xl px-2"
-          color="success"
-          :disabled="!reviewFormValid || isSavingReview"
-          :loading="isSavingReview"
-          variant="flat"
-          @click="submitReview"
-        >
-          Uložit rozhodnutí
-        </v-btn>
-      </v-card-actions>
     </v-card>
   </v-dialog>
 </template>
 
 <style scoped>
-.requests-filter-select {
-  min-width: 180px;
-}
+  .requests-filter-select {
+    min-width: 180px;
+  }
 
-:deep(.requests-col-status),
-:deep(.requests-col-detail) {
-  white-space: nowrap;
-  width: 1%;
-}
+  :deep(.requests-col-status),
+  :deep(.requests-col-detail) {
+    white-space: nowrap;
+    width: 1%;
+  }
 
-.review-chip {
-  cursor: pointer;
-  font-size: 0.78rem;
-  font-weight: 600;
-  letter-spacing: 0.01em;
-}
+  :deep(.requests-active-filter-chip .v-chip__content) {
+    padding-inline: 0.25rem;
+  }
 
-:deep(.review-chip.v-chip--variant-flat),
-:deep(.review-chip.v-chip--variant-flat .v-chip__content) {
-  color: white;
-}
-
-.review-chip--approve {
-  color: rgb(var(--v-theme-success));
-  border-color: rgb(var(--v-theme-success));
-}
-
-.review-chip--reject {
-  color: rgb(var(--v-theme-error));
-  border-color: rgb(var(--v-theme-error));
-}
-
-:deep(.requests-active-filter-chip .v-chip__content) {
-  padding-inline: 0.25rem;
-}
-
-:deep(.requests-active-filter-chip .v-chip__close) {
-  margin-inline-start: 0.125rem;
-  margin-inline-end: 0;
-}
+  :deep(.requests-active-filter-chip .v-chip__close) {
+    margin-inline-start: 0.125rem;
+    margin-inline-end: 0;
+  }
 </style>

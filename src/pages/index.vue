@@ -1,20 +1,23 @@
 <script setup lang="ts">
+  import type { Employee, JobPosition, LeaveRequest, LeaveRequestStatus, LeaveType } from '@/types/leave'
   import { computed, onMounted, ref, watch } from 'vue'
   import MainRow from '@/components/MainRow.vue'
   import PageHeader from '@/components/PageHeader.vue'
   import { useLeaveRequestReview } from '@/composables/useLeaveRequestReview'
   import { getLeaveRequests } from '@/services/mock/leaveRequestsService'
-  import { getEmployees, getJobPositions } from '@/services/mock/referenceDataService'
-  import type { Employee, JobPosition, LeaveRequest, LeaveRequestStatus } from '@/types/leave'
+  import { getEmployees, getJobPositions, getLeaveTypes } from '@/services/mock/referenceDataService'
   import {
     formatDateToCzech,
     getDateSortValue,
     getStatusChipColor,
     leaveRequestStatusLabelsNoun,
   } from '@/utils/leaveFormat'
+  import { formatPaginationLabel } from '@/utils/pagination'
+
+  type DashboardCardTitle = 'Čekající žádosti' | 'Schválené tento měsíc' | 'Zamítnuté tento měsíc'
 
   type DashboardCard = {
-    title: 'Čekající žádosti' | 'Schválené tento měsíc' | 'Zamítnuté tento měsíc'
+    title: DashboardCardTitle
     value: number
   }
 
@@ -22,18 +25,22 @@
     id: string
     employeeName: string
     workplace: string
+    typeLabel: string
+    typeRaw: string
     startDate: string
     endDate: string
     startDateSort: number
     endDateSort: number
     statusLabel: string
     statusRaw: LeaveRequestStatus
-    rejectionReason?: string | null
+    note: string
+    otherTypeDetail?: string | null
   }
 
   const employees = ref<Employee[]>([])
   const jobPositions = ref<JobPosition[]>([])
   const leaveRequests = ref<LeaveRequest[]>([])
+  const leaveTypes = ref<LeaveType[]>([])
 
   const isLoading = ref(false)
   const loadError = ref<string | null>(null)
@@ -45,6 +52,7 @@
 
   const safeUnknownEmployee = 'Neznámý zaměstnanec'
   const safeUnknownWorkplace = 'Neznámé pracoviště'
+  const safeUnknownType = 'Neznámý typ'
 
   const pendingRequestTableHeaders = [
     { title: 'Příjmení a jméno', key: 'employeeName', sortable: true },
@@ -86,19 +94,22 @@
     loadError.value = null
 
     try {
-      const [employeesResponse, leaveRequestsResponse, jobPositionsResponse] = await Promise.all([
+      const [employeesResponse, leaveRequestsResponse, jobPositionsResponse, leaveTypesResponse] = await Promise.all([
         getEmployees(),
         getLeaveRequests(),
         getJobPositions(),
+        getLeaveTypes(),
       ])
 
       employees.value = employeesResponse
       leaveRequests.value = leaveRequestsResponse
       jobPositions.value = jobPositionsResponse
+      leaveTypes.value = leaveTypesResponse
     } catch (error) {
       employees.value = []
       leaveRequests.value = []
       jobPositions.value = []
+      leaveTypes.value = []
       loadError.value = error instanceof Error
         ? error.message
         : 'Nástěnku se nepodařilo načíst.'
@@ -110,10 +121,10 @@
   const summaryCards = computed<DashboardCard[]>(() => {
     const pendingCount = leaveRequests.value.filter(request => request.status === 'pending').length
     const approvedThisMonthCount = leaveRequests.value.filter(request => {
-      return request.status === 'approved' && isInCurrentMonth(request.requestedAt ?? '')
+      return request.status === 'approved' && isInCurrentMonth(request.requestedAt)
     }).length
     const rejectedThisMonthCount = leaveRequests.value.filter(request => {
-      return request.status === 'rejected' && isInCurrentMonth(request.requestedAt ?? '')
+      return request.status === 'rejected' && isInCurrentMonth(request.requestedAt)
     }).length
 
     return [
@@ -125,6 +136,7 @@
 
   const employeeById = computed(() => new Map(employees.value.map(employee => [employee.id, employee])))
   const workplaceById = computed(() => new Map(jobPositions.value.map(position => [position.id, position.name])))
+  const leaveTypeLabelById = computed(() => new Map(leaveTypes.value.map(type => [type.id, type.label])))
 
   const pendingRequestRows = computed<PendingRequestRow[]>(() => {
     return leaveRequests.value
@@ -135,18 +147,22 @@
         const workplace = employee
           ? (workplaceById.value.get(employee.jobPositionId) ?? safeUnknownWorkplace)
           : safeUnknownWorkplace
+        const typeLabel = leaveTypeLabelById.value.get(request.type) ?? safeUnknownType
 
         return {
           id: request.id,
           employeeName,
           workplace,
+          typeLabel,
+          typeRaw: request.type,
           startDate: formatDateToCzech(request.startDate),
           endDate: formatDateToCzech(request.endDate),
           startDateSort: getDateSortValue(request.startDate),
           endDateSort: getDateSortValue(request.endDate),
           statusLabel: leaveRequestStatusLabelsNoun[request.status],
           statusRaw: request.status,
-          rejectionReason: request.rejectionReason ?? null,
+          note: request.note ?? '',
+          otherTypeDetail: request.otherTypeDetail ?? null,
         }
       })
   })
@@ -168,7 +184,7 @@
 
   const noDataMessage = computed(() => {
     if (isLoading.value) {
-      return 'Načítání čekajících žádostí…'
+      return 'Načítání čekajících žádostí...'
     }
 
     if (pendingRequestRows.value.length === 0) {
@@ -188,16 +204,7 @@
   })
 
   const paginationLabel = computed(() => {
-    const totalItems = filteredPendingRequestRows.value.length
-
-    if (totalItems === 0) {
-      return '0–0 z 0'
-    }
-
-    const start = (currentPage.value - 1) * itemsPerPage.value + 1
-    const end = Math.min(currentPage.value * itemsPerPage.value, totalItems)
-
-    return `${start}–${end} z ${totalItems}`
+    return formatPaginationLabel(currentPage.value, itemsPerPage.value, filteredPendingRequestRows.value.length)
   })
 
   const {
@@ -244,7 +251,7 @@
     if (currentPage.value > pageCount.value) {
       currentPage.value = pageCount.value
     }
-  })
+  }, { immediate: true })
 
   onMounted(() => {
     void loadDashboardData()
@@ -258,7 +265,9 @@
 
   <MainRow>
     <div class="block w-full px-2 sm:px-4">
-      <h3 class="px-2 text-2xl uppercase">Dnešní den</h3>
+      <h3 class="px-2 text-2xl uppercase">
+        Dnešní přehled
+      </h3>
 
       <div class="mt-4 grid w-full grid-cols-1 gap-6 md:grid-cols-3">
         <v-card
@@ -266,8 +275,12 @@
           :key="card.title"
           class="h-full border border-white bg-primary py-3 text-center"
         >
-          <v-card-title class="px-4">{{ card.title }}</v-card-title>
-          <v-card-text class="px-4 text-h3 font-weight-bold">{{ card.value }}</v-card-text>
+          <v-card-title class="px-4">
+            {{ card.title }}
+          </v-card-title>
+          <v-card-text class="px-4 text-h3 font-weight-bold">
+            {{ card.value }}
+          </v-card-text>
         </v-card>
       </div>
     </div>
@@ -276,14 +289,18 @@
   <MainRow>
     <div class="mt-12 block w-full px-2 sm:px-4">
       <v-card>
-        <div class="flex w-full items-center justify-between bg-primary px-4">
-          <h3 class="text-2xl uppercase">Čekající žádosti</h3>
+        <div class="flex flex-col gap-3 bg-primary px-4 py-3 md:flex-row md:items-center md:justify-between">
+          <h3 class="text-2xl uppercase">
+            Čekající žádosti
+          </h3>
 
-          <div class="my-2 flex w-3/12">
+          <div class="w-full md:max-w-sm">
             <v-text-field
               v-model="searchPendingRequests"
               hide-details
+              placeholder="Hledat žádost"
               prepend-inner-icon="mdi-magnify"
+              variant="outlined"
             />
           </div>
         </div>
@@ -311,7 +328,7 @@
 
       <div class="overflow-x-auto">
         <v-data-table
-          class="px-2 min-w-230"
+          class="min-w-[920px] px-2"
           :custom-key-sort="{
             startDateSort: (left: number, right: number) => left - right,
             endDateSort: (left: number, right: number) => left - right,
@@ -321,7 +338,7 @@
           item-value="id"
           :items="paginatedPendingRequestRows"
           :loading="isLoading"
-          loading-text="Načítání čekajících žádostí…"
+          loading-text="Načítání čekajících žádostí..."
         >
           <template #item.startDateSort="{ item }">
             {{ item.startDate }}
@@ -344,8 +361,8 @@
           <template #item.review="{ item }">
             <v-btn
               class="px-2"
-              prepend-icon="mdi-magnify"
               color="success"
+              prepend-icon="mdi-magnify"
               rounded="xl"
               size="small"
               variant="flat"
@@ -396,30 +413,83 @@
     max-width="640"
   >
     <v-card>
-      <v-card-title class="bg-primary text-white px-6 py-4 text-center text-h6 uppercase">
+      <v-card-title class="bg-primary px-6 py-4 text-center text-h6 uppercase text-white">
         Posouzení
       </v-card-title>
 
       <v-divider />
 
       <v-card-text class="px-6 py-6">
-        <div v-if="selectedRequest" class="mb-6 grid gap-4 sm:grid-cols-2">
-          <div>
-            <div class="text-caption text-medium-emphasis">Zaměstnanec</div>
-            <div class="font-weight-medium">{{ selectedRequest.employeeName }}</div>
+        <div v-if="selectedRequest" class="mb-6 grid gap-4">
+          <div class="grid gap-4 sm:grid-cols-2">
+            <div>
+              <div class="text-caption text-medium-emphasis">
+                Zaměstnanec
+              </div>
+              <div class="font-weight-medium">
+                {{ selectedRequest.employeeName }}
+              </div>
+            </div>
+            <div>
+              <div class="text-caption text-medium-emphasis">
+                Pracoviště
+              </div>
+              <div class="font-weight-medium">
+                {{ selectedRequest.workplace }}
+              </div>
+            </div>
+            <div>
+              <div class="text-caption text-medium-emphasis">
+                Dovolená od
+              </div>
+              <div class="font-weight-medium">
+                {{ selectedRequest.startDate }}
+              </div>
+            </div>
+            <div>
+              <div class="text-caption text-medium-emphasis">
+                Dovolená do
+              </div>
+              <div class="font-weight-medium">
+                {{ selectedRequest.endDate }}
+              </div>
+            </div>
           </div>
-          <div>
-            <div class="text-caption text-medium-emphasis">Pracoviště</div>
-            <div class="font-weight-medium">{{ selectedRequest.workplace }}</div>
-          </div>
-          <div>
-            <div class="text-caption text-medium-emphasis">Dovolená od</div>
-            <div class="font-weight-medium">{{ selectedRequest.startDate }}</div>
-          </div>
-          <div>
-            <div class="text-caption text-medium-emphasis">Dovolená do</div>
-            <div class="font-weight-medium">{{ selectedRequest.endDate }}</div>
-          </div>
+
+          <v-card
+            border
+            class="rounded-xl"
+            variant="tonal"
+          >
+            <v-card-text class="grid gap-4 sm:grid-cols-2">
+              <div>
+                <div class="text-caption text-medium-emphasis">
+                  Typ dovolené
+                </div>
+                <div class="font-weight-medium">
+                  {{ selectedRequest.typeLabel }}
+                </div>
+              </div>
+
+              <div v-if="selectedRequest.typeRaw === 'other'">
+                <div class="text-caption text-medium-emphasis">
+                  Upřesnění jiného volna
+                </div>
+                <div class="font-weight-medium">
+                  {{ selectedRequest.otherTypeDetail || 'Neuvedeno' }}
+                </div>
+              </div>
+
+              <div class="sm:col-span-2">
+                <div class="text-caption text-medium-emphasis">
+                  Poznámka zaměstnance
+                </div>
+                <div class="font-weight-medium whitespace-pre-line">
+                  {{ selectedRequest.note || 'Bez poznámky' }}
+                </div>
+              </div>
+            </v-card-text>
+          </v-card>
         </div>
 
         <v-alert
@@ -433,7 +503,9 @@
 
         <div class="grid gap-4">
           <div>
-            <div class="mb-2 text-body-2 uppercase">Rozhodnutí</div>
+            <div class="mb-2 text-body-2 uppercase">
+              Rozhodnutí
+            </div>
             <div class="mb-4 flex flex-wrap gap-2">
               <v-chip
                 class="review-chip review-chip--approve border px-4 uppercase"
@@ -479,9 +551,9 @@
           Zrušit
         </v-btn>
         <v-btn
+          append-icon="mdi-check"
           class="px-2 rounded-xl"
           color="success"
-          append-icon="mdi-check"
           :disabled="!reviewFormValid || isSavingReview"
           :loading="isSavingReview"
           variant="flat"
@@ -493,3 +565,33 @@
     </v-card>
   </v-dialog>
 </template>
+
+<style scoped>
+:deep(.dashboard-col-status),
+:deep(.dashboard-col-review) {
+  white-space: nowrap;
+  width: 1%;
+}
+
+.review-chip {
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+:deep(.review-chip.v-chip--variant-flat),
+:deep(.review-chip.v-chip--variant-flat .v-chip__content) {
+  color: white;
+}
+
+.review-chip--approve {
+  color: rgb(var(--v-theme-success));
+  border-color: rgb(var(--v-theme-success));
+}
+
+.review-chip--reject {
+  color: rgb(var(--v-theme-error));
+  border-color: rgb(var(--v-theme-error));
+}
+</style>

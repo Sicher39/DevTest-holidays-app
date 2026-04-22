@@ -1,31 +1,44 @@
-/**
- * router/index.ts
- *
- * Manual routes for ./src/pages/*.vue
- */
-
-// Composables
 import { createRouter, createWebHistory } from 'vue-router'
-import Index from '@/pages/index.vue'
-import NewRequest from '@/pages/newRequest.vue'
-import Requests from '@/pages/requests.vue'
+import { buildDocumentTitle, DEFAULT_PAGE_TITLE, ROUTE_PATHS } from './routes'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
+  scrollBehavior: () => ({ top: 0 }),
   routes: [
     {
-      path: '/',
-      component: Index,
+      path: ROUTE_PATHS.dashboard,
+      name: 'dashboard',
+      component: () => import('@/pages/index.vue'),
+      meta: {
+        title: 'Nástěnka',
+      },
     },
     {
-      path: '/zadosti',
-      component: Requests,
+      path: ROUTE_PATHS.requests,
+      name: 'requests',
+      component: () => import('@/pages/requests.vue'),
+      meta: {
+        title: 'Žádosti',
+      },
     },
     {
-      path: '/zadosti/nova-zadost',
-      component: NewRequest,
+      path: ROUTE_PATHS.requestCreate,
+      name: 'request-create',
+      component: () => import('@/pages/newRequest.vue'),
+      meta: {
+        title: 'Nová žádost',
+      },
+    },
+    {
+      path: '/:pathMatch(.*)*',
+      redirect: ROUTE_PATHS.dashboard,
     },
   ],
+})
+
+router.afterEach(to => {
+  const pageTitle = typeof to.meta.title === 'string' ? to.meta.title : DEFAULT_PAGE_TITLE
+  document.title = buildDocumentTitle(pageTitle)
 })
 
 export default router

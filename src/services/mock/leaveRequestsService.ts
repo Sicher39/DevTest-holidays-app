@@ -1,12 +1,13 @@
-import leaveRequestsSeed from '../../../api/leave-requests.json'
-import { delay } from './delay'
 import type {
   CreateLeaveRequestInput,
   Employee,
   LeaveRequest,
   LeaveType,
   ReviewLeaveRequestInput,
+  UpdateLeaveRequestInput,
 } from '@/types/leave'
+import leaveRequestsSeed from '../../../api/leave-requests.json'
+import { delay } from './delay'
 
 const storageKey = 'holiday-app.leave-requests'
 const dayInMilliseconds = 24 * 60 * 60 * 1000
@@ -142,6 +143,63 @@ export async function createLeaveRequest (input: CreateLeaveRequestInput, employ
 
   writeStoredLeaveRequests([...existingRequests, nextRequest])
   return structuredClone(nextRequest)
+}
+
+export async function updateLeaveRequest (
+  requestId: string,
+  input: UpdateLeaveRequestInput,
+  employees: Employee[],
+  leaveTypes: LeaveType[],
+): Promise<LeaveRequest> {
+  await delay()
+
+  const employeeExists = employees.some(employee => employee.id === input.employeeId)
+  if (!employeeExists) {
+    throw new Error('Zadaný zaměstnanec neexistuje.')
+  }
+
+  const leaveTypeExists = leaveTypes.some(leaveType => leaveType.id === input.type)
+  if (!leaveTypeExists) {
+    throw new Error('Zadaný typ dovolené neexistuje.')
+  }
+
+  const dayCount = calculateInclusiveDayCount(input.startDate, input.endDate)
+  if (!dayCount) {
+    throw new Error('Pole endDate musí být stejné nebo pozdější než startDate.')
+  }
+
+  if (input.status === 'rejected' && !input.rejectionReason?.trim()) {
+    throw new Error('Pro zamítnutí je potřeba vyplnit důvod zamítnutí.')
+  }
+
+  const existingRequests = readStoredLeaveRequests()
+  const requestIndex = existingRequests.findIndex(request => request.id === requestId)
+
+  if (requestIndex === -1) {
+    throw new Error('Požadovaná žádost nebyla nalezena.')
+  }
+
+  const currentRequest = existingRequests[requestIndex]
+  const updatedRequest: LeaveRequest = {
+    ...currentRequest,
+    employeeId: input.employeeId,
+    type: input.type,
+    otherTypeDetail: input.type === 'other' ? (input.otherTypeDetail?.trim() ?? null) : null,
+    startDate: input.startDate,
+    endDate: input.endDate,
+    days: dayCount,
+    status: input.status,
+    approvedBy: input.status === 'approved' ? (currentRequest.approvedBy ?? 'system') : null,
+    rejectionReason: input.status === 'rejected' ? (input.rejectionReason?.trim() ?? null) : null,
+    note: input.note?.trim() ?? '',
+    updatedAt: getCurrentDateString(),
+  }
+
+  const nextRequests = [...existingRequests]
+  nextRequests.splice(requestIndex, 1, updatedRequest)
+  writeStoredLeaveRequests(nextRequests)
+
+  return structuredClone(updatedRequest)
 }
 
 export async function reviewLeaveRequest (requestId: string, input: ReviewLeaveRequestInput): Promise<LeaveRequest> {

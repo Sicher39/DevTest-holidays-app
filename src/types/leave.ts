@@ -47,6 +47,11 @@ export type CreateLeaveRequestInput = {
   note?: string | null
 }
 
+export type UpdateLeaveRequestInput = CreateLeaveRequestInput & {
+  status: LeaveRequestStatus
+  rejectionReason?: string | null
+}
+
 export type ReviewLeaveRequestInput = {
   status: Exclude<LeaveRequestStatus, 'pending'>
   rejectionReason?: string | null

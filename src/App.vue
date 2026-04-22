@@ -1,67 +1,46 @@
 <script setup lang="ts">
-  import { computed, ref } from 'vue'
+  import { computed, ref, watch } from 'vue'
   import { useRoute } from 'vue-router'
   import { useDisplay } from 'vuetify/framework'
+  import { DEFAULT_PAGE_TITLE, ROUTE_MENU_ITEMS, ROUTE_PATHS } from '@/router/routes'
 
   const drawer = ref(false)
   const route = useRoute()
   const { mdAndUp } = useDisplay()
 
   const pageTitle = computed(() => {
-    switch (route.name) {
-      case 'requests': {
-        return 'Leave Requests'
-      }
-      case 'request-detail': {
-        return 'Request Detail'
-      }
-      case 'request-create': {
-        return 'New Request'
-      }
-      default: {
-        return 'nástěnka'
-      }
-    }
+    return typeof route.meta.title === 'string' ? route.meta.title : DEFAULT_PAGE_TITLE
   })
 
-  const menuItems = [
-    {
-      title: 'Nástěnka',
-      icon: 'mdi-bulletin-board',
-      to: '/',
-    },
-    {
-      title: 'Žádosti',
-      icon: 'mdi-calendar-text',
-      to: '/zadosti',
-    },
-  ]
+  watch(() => route.fullPath, () => {
+    drawer.value = false
+  })
 </script>
 
 <template>
   <v-app>
     <v-app-bar color="primary" density="compact" elevation="1">
-
-      <div class="flex justify-between items-center w-full px-4  ">
-        <div class="flex space-x-2">
-          <router-link to="/">
+      <div class="flex w-full items-center justify-between px-4">
+        <div class="flex items-center gap-2">
+          <router-link class="font-weight-bold text-white no-underline" :to="ROUTE_PATHS.dashboard">
             HM
           </router-link>
           <p>|</p>
           <p>{{ pageTitle }}</p>
         </div>
-        <div class="flex">
+
+        <div class="flex items-center gap-2">
           <template v-if="mdAndUp">
             <router-link
-              v-for="item in menuItems"
+              v-for="item in ROUTE_MENU_ITEMS"
               :key="item.to"
               v-slot="{ isActive }"
-              class="px-4"
+              class="no-underline"
               :to="item.to"
             >
               <v-btn
-                class="mx-2 px-2"
-                :color="isActive ? undefined : 'active'"
+                class="px-2"
+                :color="isActive ? 'active' : undefined"
                 :prepend-icon="item.icon"
                 rounded="lg"
                 variant="plain"
@@ -76,18 +55,17 @@
             color="success"
             prepend-icon="mdi-invoice-text-plus"
             rounded="lg"
-            to="/zadosti/nova-zadost"
+            :to="ROUTE_PATHS.requestCreate"
             variant="flat"
           >
             <span class="text-white">Nová žádost</span>
           </v-btn>
-          <!-- Mobile Icon   -->
+
           <v-app-bar-nav-icon v-if="!mdAndUp" @click="drawer = !drawer" />
         </div>
       </div>
     </v-app-bar>
 
-    <!--    Mobile menu -->
     <v-navigation-drawer
       v-model="drawer"
       location="right"
@@ -95,7 +73,7 @@
     >
       <v-list class="px-2" density="comfortable" nav>
         <v-list-item
-          v-for="item in menuItems"
+          v-for="item in ROUTE_MENU_ITEMS"
           :key="item.to"
           :prepend-icon="item.icon"
           rounded="lg"
@@ -105,7 +83,6 @@
       </v-list>
     </v-navigation-drawer>
 
-    <!-- Main Content -->
     <v-main>
       <router-view />
     </v-main>
